@@ -747,6 +747,27 @@ button {
   animation-duration: 8s;
 }
 
+.hero-card--4 {
+  top: 35%;
+  right: 8%;
+  animation-delay: -1s;
+  animation-duration: 9s;
+}
+
+.hero-card--5 {
+  top: 65%;
+  left: 5%;
+  animation: cardFloat2 8s ease-in-out infinite;
+  animation-delay: -3s;
+}
+
+.hero-card--6 {
+  bottom: 5%;
+  left: 15%;
+  animation-delay: -5s;
+  animation-duration: 7s;
+}
+
 @keyframes cardFloat {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-12px); }
@@ -1206,6 +1227,11 @@ button {
   z-index: 1;
 }
 
+/* Push link to bottom */
+.bento-card-content {
+  flex: 1;
+}
+
 .bento-card--featured .bento-card-inner {
   min-height: 460px;
 }
@@ -1313,22 +1339,38 @@ button {
   font-size: 0.875rem;
   font-weight: 700;
   color: var(--color-accent-blue);
-  transition: gap 0.2s ease, color 0.2s ease !important;
   text-decoration: none;
+  transition: color 0.2s ease !important;
+  position: relative;
+  z-index: 1;
 }
 
 .bento-link:hover {
-  gap: 14px;
   color: var(--color-accent-cyan);
 }
 
 .bento-arrow {
   transition: transform 0.2s ease !important;
   display: inline-block;
+  min-width: 1em; /* ぶれ防止: 幅を固定 */
 }
 
 .bento-link:hover .bento-arrow {
-  transform: translateX(4px);
+  transform: translateX(6px);
+}
+
+/* カード全体をクリック可能 */
+.bento-card {
+  cursor: pointer;
+}
+
+/* カードホバー時にリンクテキストも変色 */
+.bento-card:hover .bento-link {
+  color: var(--color-accent-cyan);
+}
+
+.bento-card:hover .bento-arrow {
+  transform: translateX(6px);
 }
 
 /* Social buttons inside card */

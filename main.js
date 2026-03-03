@@ -753,7 +753,29 @@ const MagneticEffect = (() => {
 
 
 // ----------------------------------------------------------------
-// 16. DYNAMIC YEAR IN FOOTER
+// 16. BENTO CARD — FULL CARD CLICKABLE
+// ----------------------------------------------------------------
+
+const BentoCardClick = (() => {
+  function init() {
+    document.querySelectorAll('.bento-card').forEach(card => {
+      // 最初のリンクを取得（bento-link または bento-social-btn）
+      const primaryLink = card.querySelector('.bento-link');
+      if (!primaryLink) return;
+
+      card.addEventListener('click', (e) => {
+        // すでにリンク・ボタンをクリックしている場合はスキップ
+        if (e.target.closest('a') || e.target.closest('button')) return;
+        primaryLink.click();
+      });
+    });
+  }
+
+  return { init };
+})();
+
+// ----------------------------------------------------------------
+// 17. DYNAMIC YEAR IN FOOTER
 // ----------------------------------------------------------------
 
 const DynamicYear = (() => {
@@ -831,6 +853,7 @@ const App = {
     CardStagger.init();
     TiltEffect.init();
     MagneticEffect.init();
+    BentoCardClick.init();
 
     // Accessibility
     ActiveNavLink.init();
