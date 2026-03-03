@@ -1287,6 +1287,18 @@ button {
   border: 1px solid var(--tag-border);
 }
 
+.bento-badge--book {
+  background: rgba(234, 179, 8, 0.12);
+  color: #FCD34D;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+
+.bento-badge--interview {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6EE7B7;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
 .bento-card-content {
   flex: 1;
 }
