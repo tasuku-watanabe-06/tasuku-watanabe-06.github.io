@@ -759,12 +759,18 @@ const MagneticEffect = (() => {
 const BentoCardClick = (() => {
   function init() {
     document.querySelectorAll('.bento-card').forEach(card => {
-      // 最初のリンクを取得（bento-link または bento-social-btn）
       const primaryLink = card.querySelector('.bento-link');
-      if (!primaryLink) return;
 
+      // ① Hover jitter 修正:
+      //    CSS :hover は transform: translateY(-6px) でカードが浮くと
+      //    カーソルがカード外に出て hover が外れ、ちらつく。
+      //    mouseenter/mouseleave は transform に影響されないので安定。
+      card.addEventListener('mouseenter', () => card.classList.add('is-hovered'));
+      card.addEventListener('mouseleave', () => card.classList.remove('is-hovered'));
+
+      // ② カード全体をクリック可能に
+      if (!primaryLink) return;
       card.addEventListener('click', (e) => {
-        // すでにリンク・ボタンをクリックしている場合はスキップ
         if (e.target.closest('a') || e.target.closest('button')) return;
         primaryLink.click();
       });

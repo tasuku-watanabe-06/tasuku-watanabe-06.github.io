@@ -1207,13 +1207,13 @@ button {
   transition: opacity 0.3s ease !important;
 }
 
-.bento-card:hover {
+.bento-card.is-hovered {
   transform: translateY(-6px);
   border-color: var(--color-border-bright);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--color-border-bright);
 }
 
-.bento-card:hover::before {
+.bento-card.is-hovered::before {
   opacity: 1;
 }
 
@@ -1246,7 +1246,7 @@ button {
   border-radius: 24px;
 }
 
-.bento-card:hover .bento-card-glow {
+.bento-card.is-hovered .bento-card-glow {
   opacity: 1;
 }
 
@@ -1365,11 +1365,11 @@ button {
 }
 
 /* カードホバー時にリンクテキストも変色 */
-.bento-card:hover .bento-link {
+.bento-card.is-hovered .bento-link {
   color: var(--color-accent-cyan);
 }
 
-.bento-card:hover .bento-arrow {
+.bento-card.is-hovered .bento-arrow {
   transform: translateX(6px);
 }
 
