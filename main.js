@@ -768,8 +768,11 @@ const BentoCardClick = (() => {
       card.addEventListener('mouseenter', () => card.classList.add('is-hovered'));
       card.addEventListener('mouseleave', () => card.classList.remove('is-hovered'));
 
-      // ② カード全体をクリック可能に
-      if (!primaryLink) return;
+      // ② primaryLink がないカード (例: LinkedIn & Facebook) は pointer を外す
+      if (!primaryLink) {
+        card.style.cursor = 'default';
+        return;
+      }
       card.addEventListener('click', (e) => {
         if (e.target.closest('a') || e.target.closest('button')) return;
         primaryLink.click();
