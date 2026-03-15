@@ -2,7 +2,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1, maximum-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
   <title>かえるののぼりぼり！</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,10 +17,16 @@
       min-height: 100vh;
       overflow: hidden;
       gap: 8px;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
     }
     canvas {
       display: block;
       image-rendering: pixelated;
+      touch-action: none;
     }
     #settings {
       display: flex;
@@ -281,6 +289,9 @@ function stopBGM() {
   if (bgmTimeout) { clearTimeout(bgmTimeout); bgmTimeout = null; }
 }
 
+// iOS ロングプレスメニュー・選択防止
+document.addEventListener('contextmenu', e => e.preventDefault());
+
 // キー入力
 const keys = {};
 document.addEventListener('keydown', e => {
@@ -320,9 +331,9 @@ function handleTouchAll(e) {
       }
       return;
     }
-    if (ty > H - 130) {
-      if (tx < W*0.25) tL = true;
-      else if (tx < W*0.5) tR = true;
+    if (ty > H - 165) {
+      if (tx < W*0.28) tL = true;
+      else if (tx < W*0.52) tR = true;
       else tJ = true;
     }
   }
@@ -922,21 +933,34 @@ function drawUI() {
 // =================== タッチUI描画 ===================
 function drawTouchUI() {
   const btns = [
-    {x:55,  y:H-70, r:38, label:'◀', active:tL},
-    {x:145, y:H-70, r:38, label:'▶', active:tR},
-    {x:W-70, y:H-65, r:44, label:'ジャンプ', active:tJ, small:true},
+    {x:65,  y:H-80, r:52, label:'◀', active:tL},
+    {x:175, y:H-80, r:52, label:'▶', active:tR},
+    {x:W-85, y:H-78, r:60, label:'🐸', active:tJ},
   ];
   ctx.save();
   for (const b of btns) {
-    ctx.globalAlpha = b.active ? 0.65 : 0.32;
-    ctx.fillStyle = b.active ? '#4CAF50' : '#333';
+    // 外枠（白い輪郭）
+    ctx.globalAlpha = b.active ? 0.9 : 0.45;
+    ctx.strokeStyle = b.active ? '#A5D6A7' : 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.stroke();
+    // 塗り
+    ctx.globalAlpha = b.active ? 0.75 : 0.28;
+    ctx.fillStyle = b.active ? '#2E7D32' : '#1a2a1a';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 0.85;
+    // ラベル
+    ctx.globalAlpha = b.active ? 1.0 : 0.75;
     ctx.fillStyle = '#fff';
-    ctx.font = b.small ? 'bold 14px sans-serif' : 'bold 26px sans-serif';
+    ctx.font = b.label === '🐸' ? `${b.r * 0.9}px serif` : `bold ${b.r * 0.72}px sans-serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(b.label, b.x, b.y);
+    ctx.fillText(b.label, b.x, b.y + (b.label === '🐸' ? 2 : 0));
   }
+  // ジャンプボタン下のラベル
+  ctx.globalAlpha = tJ ? 0.9 : 0.55;
+  ctx.fillStyle = '#A5D6A7';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('ジャンプ', W-85, H-20);
   ctx.textBaseline='alphabetic';
   ctx.restore();
 }
@@ -967,22 +991,27 @@ function drawTitle() {
   ctx.font='bold 44px sans-serif'; ctx.fillText('のぼりぼり！', W/2, 308);
   ctx.shadowBlur=0; ctx.shadowOffsetY=0;
 
-  // 操作説明
-  ctx.fillStyle='#1B5E20';
-  ctx.font='15px sans-serif';
-  ctx.fillText('← → (A/D)：左右移動', W/2, 360);
-  ctx.fillText('スペース / ↑ ：ジャンプ', W/2, 385);
+  // タッチ操作説明（大きく・分かりやすく）
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.roundRect(W/2-180, 345, 360, 80, 14); ctx.fill();
+
+  ctx.fillStyle='#E8F5E9';
+  ctx.font='bold 17px sans-serif';
+  ctx.fillText('◀ ひだり　　▶ みぎ　　🐸 ジャンプ', W/2, 370);
+  ctx.font='13px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.fillText('（キーボードも使えるよ：← → スペース）', W/2, 393);
 
   // 鳥の説明
   ctx.fillStyle='rgba(80,40,0,0.75)';
   ctx.font='13px sans-serif';
-  ctx.fillText('⚠️ 鳥が邪魔をしてくる！海に落ちたらおしまい', W/2, 415);
+  ctx.fillText('⚠️ 鳥が邪魔をしてくる！海に落ちたらおしまい', W/2, 422);
 
   // スタートボタン
   if (Date.now()/500 % 2 < 1) {
     ctx.fillStyle='#E65100';
-    ctx.font='bold 21px sans-serif';
-    ctx.fillText('スペース / タップでスタート！', W/2, 462);
+    ctx.font='bold 22px sans-serif';
+    ctx.fillText('👆 タップしてスタート！', W/2, 465);
   }
 
   // 海
