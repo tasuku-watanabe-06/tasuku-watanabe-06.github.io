@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>かえるののぼりぼり！</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      gap: 8px;
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+    }
+    #settings {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 12px;
+      flex-wrap: wrap;
+      color: #fff;
+      font-size: 14px;
+      font-family: sans-serif;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    }
+    #settings span { white-space: nowrap; }
+    #seaTimeInput {
+      width: 58px;
+      padding: 4px 8px;
+      border: 2px solid rgba(255,255,255,0.5);
+      border-radius: 6px;
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      font-size: 15px;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    #seaTimeInput:focus { outline: none; border-color: #4FC3F7; }
+    #startBtn {
+      padding: 6px 20px;
+      border: 2px solid #4FC3F7;
+      border-radius: 8px;
+      background: rgba(79,195,247,0.18);
+      color: #4FC3F7;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      font-family: sans-serif;
+      transition: background 0.15s;
+    }
+    #startBtn:hover { background: rgba(79,195,247,0.38); }
+  </style>
+</head>
+<body>
+<div id="settings">
+  <span>🌊 海が上がってくるまで：</span>
+  <input type="number" id="seaTimeInput" value="20" min="5" max="300">
+  <span>秒</span>
+  <button id="startBtn" onclick="applyAndStart()">▶ スタート</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// レスポンシブサイズ
+const BASE_W = 480, BASE_H = 640;
+let scale = 1;
+function resize() {
+  const panel = document.getElementById('settings');
+  const panelH = panel ? panel.offsetHeight + 16 : 0;
+  scale = Math.min(window.innerWidth / BASE_W, (window.innerHeight - panelH) / BASE_H);
+  canvas.width  = BASE_W * scale;
+  canvas.height = BASE_H * scale;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ゲーム定数
+const W = BASE_W, H = BASE_H;
+const GRAVITY      = 0.45;
+const JUMP_F       = -13.5;
+const MOVE_SP      = 4.2;
+const FRICTION     = 0.80;
+const WORLD_H      = 7000;
+const GOAL_Y       = 400;      // ゴールのworld座標（上が小さい）
+const SEA_Y        = WORLD_H - 60;
+
+// ゲーム状態
+const S = { TITLE:0, PLAY:1, OVER:2, WIN:3 };
+let state = S.TITLE;
+
+// カメラ
+let camY = 0;
+
+// プレイヤー（かえる）
+const frog = {
+  x:W/2, y:0, vx:0, vy:0,
+  onGround:false,
+  facing:1,       // 1=right, -1=left
+  sqX:1, sqY:1,   // スクワッシュ
+  justLanded:false,
+};
+
+// プラットフォーム（蓮の葉）
+let pads = [];
+
+// 鳥
+let birds = [];
+let birdTimer = 0;
+
+// パーティクル
+let particles = [];
+
+// スコア（高度）
+let maxHeight = 0;
+
+// 海上昇システム
+let seaRiseSecs = 20;    // 設定値（秒）
+let gameTimer   = 0;     // フレームカウンタ
+let seaRiseY    = SEA_Y; // 現在の海面world座標（小さくなるほど上に来る）
+
+// =================== AUDIO ===================
+let audioCtx = null;
+let bgmRunning = false;
+let bgmTimeout = null;
+let bgmIdx = 0;
+let soundDone = false; // ゲームオーバー/クリア音の重複防止
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// ジャンプ音（ぴょーん）
+function playJumpSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(300, now);
+  osc.frequency.exponentialRampToValueAtTime(620, now + 0.07);
+  osc.frequency.exponentialRampToValueAtTime(420, now + 0.17);
+  gain.gain.setValueAtTime(0.08, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+  osc.start(now); osc.stop(now + 0.20);
+}
+
+// 着地音（ぺたっ）
+function playLandSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(290, now);
+  osc.frequency.exponentialRampToValueAtTime(140, now + 0.12);
+  gain.gain.setValueAtTime(0.11, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+  osc.start(now); osc.stop(now + 0.14);
+}
+
+// 鳥衝突音（バシッ！）
+function playBirdHitSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(750, now);
+  osc.frequency.exponentialRampToValueAtTime(180, now + 0.15);
+  gain.gain.setValueAtTime(0.17, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  osc.start(now); osc.stop(now + 0.18);
+}
+
+// ゲームオーバー音（ずどーん）
+function playGameoverSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  [440, 330, 220, 147].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.14, now + i*0.18);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.18 + 0.22);
+    osc.start(now + i*0.18); osc.stop(now + i*0.18 + 0.22);
+  });
+}
+
+// クリア音（ジャーン！）
+function playWinSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  [523, 659, 784, 1047, 1319].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now + i*0.1);
+    gain.gain.linearRampToValueAtTime(0.16, now + i*0.1 + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.1 + 0.42);
+    osc.start(now + i*0.1); osc.stop(now + i*0.1 + 0.46);
+  });
+}
+
+// BGM（かえるテーマ・チップチューン）
+const BGM_MEL = [
+  784,0,659,0, 784,0,880,0, 784,0,659,0, 523,0,0,0,
+  587,0,698,0, 784,0,880,0, 784,0,0,0,   784,0,0,0,
+  659,0,784,0, 880,0,784,0, 659,0,523,0, 587,0,659,0,
+  523,0,0,0,   784,0,0,0,   659,0,523,0, 523,0,0,0,
+];
+const BGM_BASS = [
+  262,0,0,0, 392,0,0,0, 262,0,0,0, 392,0,0,0,
+  294,0,0,0, 440,0,0,0, 294,0,0,0, 440,0,0,0,
+  262,0,0,0, 392,0,0,0, 349,0,0,0, 262,0,0,0,
+  262,0,0,0, 392,0,0,0, 262,0,0,0, 0,0,0,0,
+];
+const BGM_DUR = 0.13;
+
+function playBGMNote() {
+  if (!audioCtx || !bgmRunning) return;
+  const freq = BGM_MEL[bgmIdx % BGM_MEL.length];
+  const bass = BGM_BASS[bgmIdx % BGM_BASS.length];
+  const now = audioCtx.currentTime;
+  if (freq > 0) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + BGM_DUR * 0.8);
+    osc.start(now); osc.stop(now + BGM_DUR);
+  }
+  if (bass > 0) {
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2); gain2.connect(audioCtx.destination);
+    osc2.type = 'triangle';
+    osc2.frequency.value = bass;
+    gain2.gain.setValueAtTime(0.04, now);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + BGM_DUR * 0.7);
+    osc2.start(now); osc2.stop(now + BGM_DUR);
+  }
+  bgmIdx++;
+  bgmTimeout = setTimeout(playBGMNote, BGM_DUR * 1000);
+}
+
+function startBGM() {
+  if (bgmRunning) return;
+  bgmRunning = true;
+  bgmIdx = 0;
+  playBGMNote();
+}
+
+function stopBGM() {
+  bgmRunning = false;
+  if (bgmTimeout) { clearTimeout(bgmTimeout); bgmTimeout = null; }
+}
+
+// キー入力
+const keys = {};
+document.addEventListener('keydown', e => {
+  if (!keys[e.code]) {
+    keys[e.code] = true;
+    if (e.code === 'Space') e.preventDefault();
+  }
+  // 初回操作でオーディオ初期化＆BGM開始
+  if (!audioCtx) { ensureAudio(); startBGM(); }
+  if (state !== S.PLAY) {
+    if (e.code === 'Space' || e.code === 'Enter') startGame();
+  }
+});
+document.addEventListener('keyup', e => keys[e.code] = false);
+
+// タッチ
+let tL=false, tR=false, tJ=false;
+canvas.addEventListener('touchstart', handleTouchAll, {passive:false});
+canvas.addEventListener('touchmove',  handleTouchAll, {passive:false});
+canvas.addEventListener('touchend',   handleTouchEnd, {passive:false});
+
+function handleTouchAll(e) {
+  e.preventDefault();
+  tL=tR=tJ=false;
+  for (const t of e.touches) {
+    const r = canvas.getBoundingClientRect();
+    const tx = (t.clientX - r.left) / scale;
+    const ty = (t.clientY - r.top)  / scale;
+    if (state !== S.PLAY) {
+      if (!audioCtx) { ensureAudio(); startBGM(); }
+      startGame(); return;
+    }
+    if (ty > H - 130) {
+      if (tx < W*0.25) tL = true;
+      else if (tx < W*0.5) tR = true;
+      else tJ = true;
+    }
+  }
+}
+function handleTouchEnd(e) {
+  e.preventDefault();
+  if (e.touches.length === 0) tL=tR=tJ=false;
+}
+
+// =================== 蓮の葉生成 ===================
+function genPads() {
+  pads = [];
+  // スタート台
+  pads.push({ x:W/2-50, y:WORLD_H-240, w:100, h:22, wobble:0, isGoal:false });
+
+  let cy = WORLD_H - 320;
+  let cx = W/2;
+  while (cy > GOAL_Y + 150) {
+    const spread = Math.min(160, 60 + (WORLD_H - cy) / 35);
+    cx = clamp(cx + rnd(-spread, spread), 50, W-50);
+    const pw = 60 + rnd(0, 35);
+    pads.push({ x:cx - pw/2, y:cy, w:pw, h:20, wobble:0, isGoal:false, wasOn:false });
+    cy -= 75 + rnd(0, 55);
+  }
+  // ゴール台
+  pads.push({ x:W/2-80, y:GOAL_Y+80, w:160, h:28, wobble:0, isGoal:true, wasOn:false });
+}
+
+// =================== ゲーム開始 ===================
+function startGame() {
+  state = S.PLAY;
+  frog.x = W/2; frog.y = WORLD_H-280;
+  frog.vx=0; frog.vy=0; frog.onGround=false; frog.sqX=1; frog.sqY=1;
+  camY = frog.y - H*0.65;
+  birds = []; particles = []; birdTimer = 0; maxHeight = 0;
+  soundDone = false;
+  gameTimer = 0;
+  seaRiseY = SEA_Y;
+  genPads();
+  stopBGM();
+  if (audioCtx) startBGM();
+}
+
+// =================== 更新 ===================
+function update() {
+  if (state !== S.PLAY) return;
+
+  const mL = keys['ArrowLeft']  || keys['KeyA'] || tL;
+  const mR = keys['ArrowRight'] || keys['KeyD'] || tR;
+  const jump = keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || tJ;
+
+  if (mL) { frog.vx -= 0.7; frog.facing = -1; }
+  if (mR) { frog.vx += 0.7; frog.facing =  1; }
+  if (!mL && !mR) frog.vx *= FRICTION;
+  frog.vx = clamp(frog.vx, -MOVE_SP, MOVE_SP);
+
+  if (jump && frog.onGround) {
+    frog.vy = JUMP_F;
+    frog.onGround = false;
+    frog.sqY = 0.55; frog.sqX = 1.5;
+    addParticles(frog.x, frog.y + 15, 6, '#66BB6A');
+    playJumpSound();
+  }
+
+  frog.vy += GRAVITY;
+  frog.x += frog.vx;
+  frog.y += frog.vy;
+
+  // 横ループ
+  if (frog.x < -20) frog.x = W+20;
+  if (frog.x > W+20) frog.x = -20;
+
+  // スクワッシュ回復
+  frog.sqY += (1 - frog.sqY) * 0.18;
+  frog.sqX += (1 - frog.sqX) * 0.18;
+
+  // 着地判定
+  frog.onGround = false;
+  frog.justLanded = false;
+  for (const pad of pads) {
+    if (frog.vy >= 0
+      && frog.x > pad.x
+      && frog.x < pad.x + pad.w
+      && frog.y + 18 >= pad.y
+      && frog.y + 18 <= pad.y + pad.h + frog.vy + 2) {
+      frog.y = pad.y - 18;
+      frog.vy = 0;
+      frog.onGround = true;
+      if (!pad.wasOn) {
+        frog.sqY = 0.65; frog.sqX = 1.35;
+        addParticles(frog.x, frog.y + 18, 8, '#388E3C');
+        pad.wobble = 4;
+        frog.justLanded = true;
+        playLandSound();
+      }
+      pad.wasOn = true;
+      if (pad.isGoal && !soundDone) {
+        soundDone = true;
+        playWinSound();
+        stopBGM();
+        state = S.WIN;
+      }
+    } else {
+      pad.wasOn = false;
+    }
+    if (pad.wobble) { pad.wobble *= 0.82; if (Math.abs(pad.wobble) < 0.1) pad.wobble = 0; }
+  }
+
+  // 鳥スポーン
+  birdTimer++;
+  const altitude = clamp((WORLD_H - frog.y) / WORLD_H, 0, 1);
+  const interval = Math.max(55, 160 - altitude * 110);
+  if (birdTimer >= interval) { spawnBird(); birdTimer = 0; }
+
+  // 鳥更新 & 当たり判定
+  for (const b of birds) {
+    b.x += b.vx;
+    b.y += b.vy * 0.5;
+    b.wing += 0.13;
+
+    const bw = b.size * 55;
+    const bh = b.size * 28;
+    if (Math.abs(frog.x - b.x) < (20 + bw*0.5)
+      && Math.abs(frog.y - b.y) < (18 + bh*0.5)) {
+      if (!b.hitCd) {
+        b.hitCd = 40;
+        const dx = frog.x - b.x, dy = frog.y - b.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        const f = 7;
+        frog.vx += (dx/d)*f;
+        frog.vy += (dy/d)*f - 1.5;
+        frog.onGround = false;
+        addParticles(frog.x, frog.y, 12, '#FFB300');
+        playBirdHitSound();
+      }
+    }
+    if (b.hitCd > 0) b.hitCd--;
+  }
+  birds = birds.filter(b => b.x > -150 && b.x < W+150);
+
+  // パーティクル
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.94; p.life--;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // カメラ
+  const tgt = frog.y - H*0.65;
+  camY += (tgt - camY) * 0.09;
+
+  // 高度記録
+  const h = WORLD_H - frog.y;
+  if (h > maxHeight) maxHeight = h;
+
+  // ゲームタイマー更新
+  gameTimer++;
+
+  // 海の上昇
+  if (gameTimer > seaRiseSecs * 60) {
+    const riseTime = gameTimer - seaRiseSecs * 60;
+    // 徐々に加速（最初は遅く、だんだん速く）
+    const speed = 0.8 + riseTime / 2400;
+    seaRiseY -= speed;
+    seaRiseY = Math.max(seaRiseY, GOAL_Y + 300); // ゴールより上には来ない
+  }
+
+  // ゲームオーバー（海に沈んだ）
+  if (frog.y > seaRiseY && !soundDone) {
+    soundDone = true;
+    playGameoverSound();
+    stopBGM();
+    state = S.OVER;
+  }
+}
+
+// =================== 鳥スポーン ===================
+function spawnBird() {
+  const worldY = camY + H*0.2 + Math.random()*H*0.6;
+  const fromLeft = Math.random() < 0.5;
+  const altitude = clamp((WORLD_H - worldY) / WORLD_H, 0, 1);
+  const spd = 2.0 + altitude * 3.5 + Math.random() * 2;
+  const types = [
+    {size:0.8, r:101, g:85,  b:72},   // 茶色いカラス
+    {size:1.1, r:70,  g:90,  b:100},  // 青みがかった鷹
+    {size:1.5, r:180, g:50,  b:30},   // 赤いでかい鳥
+  ];
+  const t = types[Math.floor(Math.random() * types.length)];
+  birds.push({
+    x: fromLeft ? -80 : W+80,
+    y: worldY,
+    vx: fromLeft ? spd : -spd,
+    vy: (Math.random()-0.5) * 0.4,
+    wing: Math.random()*Math.PI*2,
+    size: t.size,
+    r:t.r, g:t.g, b:t.b,
+    hitCd: 0,
+  });
+}
+
+// =================== パーティクル ===================
+function addParticles(x, y, n, color) {
+  for (let i=0; i<n; i++) {
+    const a = Math.random()*Math.PI*2;
+    const s = 1.5 + Math.random()*3;
+    particles.push({
+      x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s - 1,
+      size: 2 + Math.random()*3,
+      color,
+      life: 25 + Math.random()*20,
+    });
+  }
+}
+
+// =================== 描画ヘルパー ===================
+function toScreenY(worldY) { return worldY - camY; }
+
+function drawCloud(x, y, w, h, alpha=1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(x+w*0.5, y+h*0.6, w*0.5, h*0.4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+w*0.3, y+h*0.4, w*0.27, h*0.35, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+w*0.65,y+h*0.3, w*0.24, h*0.3, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+// =================== 背景描画 ===================
+function drawBG() {
+  // 高度に応じてグラデーション変化
+  const alt = clamp(1 - (camY / (WORLD_H - H)), 0, 1);
+  // 低い：夕暮れ海 → 高い：青空
+  const top    = lerpColor([20,30,80],[80,160,220], alt);
+  const bottom = lerpColor([40,80,160],[160,220,255], alt);
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0, `rgb(${top})`);
+  g.addColorStop(1, `rgb(${bottom})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  // 太陽
+  const sunWY = GOAL_Y - 200;
+  const sunSY = toScreenY(sunWY);
+  if (sunSY > -120 && sunSY < H+80) {
+    ctx.save();
+    // グロー
+    for (let r=120; r>=30; r-=15) {
+      ctx.globalAlpha = 0.04;
+      ctx.fillStyle = '#FFE566';
+      ctx.beginPath(); ctx.arc(W-90, sunSY, r, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#FFE566';
+    ctx.beginPath(); ctx.arc(W-90, sunSY, 32, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  // 背景の雲
+  const t = Date.now()/4000;
+  for (let i=0; i<10; i++) {
+    const wy = GOAL_Y + 300 + i*600;
+    const sy = toScreenY(wy);
+    if (sy < -80 || sy > H+80) continue;
+    const cx2 = ((i*173 + t*50*(i%2?1:-1)) % (W+200) + W+200) % (W+200) - 100;
+    drawCloud(cx2, sy, 100+i*8, 50, 0.55+i*0.03);
+  }
+
+  // ゴール雲帯
+  const goalSY = toScreenY(GOAL_Y);
+  if (goalSY > -100 && goalSY < H+100) {
+    ctx.save();
+    // 光のオーラ
+    const glow = ctx.createLinearGradient(0, goalSY-80, 0, goalSY+60);
+    glow.addColorStop(0,'rgba(255,255,220,0)');
+    glow.addColorStop(0.4,'rgba(255,255,220,0.35)');
+    glow.addColorStop(1,'rgba(255,255,220,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, goalSY-80, W, 140);
+
+    for (let i=-1; i<=3; i++) {
+      drawCloud(i*140-20, goalSY-80, 130, 65, 0.92);
+      drawCloud(i*140+50, goalSY-50, 110, 55, 0.85);
+    }
+    // ゴールテキスト
+    ctx.globalAlpha = 0.8 + Math.sin(Date.now()/400)*0.2;
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#FF6F00';
+    ctx.shadowBlur = 10;
+    ctx.fillText('⭐ ゴール ⭐', W/2, goalSY-10);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // 海（動的に上昇）
+  const seaSY = toScreenY(seaRiseY);
+  if (seaSY < H) {
+    const sg = ctx.createLinearGradient(0, Math.max(0,seaSY), 0, H);
+    sg.addColorStop(0,'#1565C0');
+    sg.addColorStop(0.4,'#0D47A1');
+    sg.addColorStop(1,'#01579B');
+    ctx.fillStyle = sg;
+    ctx.fillRect(0, Math.max(0,seaSY), W, H);
+
+    // 波
+    const wt = Date.now()/900;
+    for (let wi=0; wi<4; wi++) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,255,255,${0.3-wi*0.05})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const wy2 = seaSY + 15 + wi*20;
+      if (wy2 < H) {
+        for (let wx=0; wx<=W; wx+=4) {
+          const wy3 = wy2 + Math.sin(wx/35+wt+wi)*6;
+          wx===0 ? ctx.moveTo(wx,wy3) : ctx.lineTo(wx,wy3);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.font='bold 18px sans-serif'; ctx.textAlign='center';
+    if (seaSY + 50 < H) ctx.fillText('🌊 うみ 🌊', W/2, seaSY+50);
+  }
+}
+
+// =================== 蓮の葉描画 ===================
+function drawPads() {
+  for (const pad of pads) {
+    const sy = toScreenY(pad.y);
+    if (sy < -30 || sy > H+30) continue;
+    const wob = pad.wobble || 0;
+
+    ctx.save();
+    if (pad.isGoal) {
+      // ゴール台：虹雲
+      ctx.fillStyle = 'rgba(255,255,255,0.93)';
+      ctx.beginPath();
+      ctx.ellipse(pad.x+pad.w/2, sy+pad.h/2, pad.w/2, pad.h/2, 0, 0, Math.PI*2);
+      ctx.fill();
+      const rainbow = ['#FF595E','#FF924C','#FFCA3A','#6A4C93','#1982C4','#8AC926'];
+      for (let ri=0; ri<rainbow.length; ri++) {
+        ctx.strokeStyle = rainbow[ri];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(pad.x+pad.w/2, sy+pad.h/2, pad.w/2+ri*2.5, pad.h/2+ri*1.2, 0, 0, Math.PI*2);
+        ctx.stroke();
+      }
+    } else {
+      // 通常の蓮の葉
+      const cx = pad.x + pad.w/2;
+      const cy = sy + pad.h/2 + wob;
+
+      // 影
+      ctx.fillStyle = 'rgba(0,60,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(cx+3, cy+5, pad.w/2, pad.h/3, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // メイン葉
+      const gr = ctx.createRadialGradient(cx-pad.w*0.15, cy-2, 3, cx, cy, pad.w/2);
+      gr.addColorStop(0, '#81C784');
+      gr.addColorStop(0.55,'#2E7D32');
+      gr.addColorStop(1,   '#1B5E20');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, pad.w/2, pad.h/2, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // 葉脈
+      ctx.strokeStyle = 'rgba(0,80,0,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cy-pad.h/2+2); ctx.lineTo(cx, cy+pad.h/2-2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx-pad.w*0.3, cy-4); ctx.lineTo(cx+pad.w*0.3, cy+4); ctx.stroke();
+
+      // たまに花
+      if (pad.x % 97 < 28) {
+        ctx.font = '11px serif'; ctx.textAlign='center';
+        ctx.fillText('🌸', cx + pad.w*0.28, cy - pad.h*0.55);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+// =================== 鳥描画 ===================
+function drawBird(b) {
+  const sy = toScreenY(b.y);
+  if (sy < -80 || sy > H+80) return;
+
+  ctx.save();
+  ctx.translate(b.x, sy);
+  if (b.vx > 0) ctx.scale(-1, 1);  // 進行方向に顔を向ける
+
+  const s = b.size;
+  ctx.scale(s, s);
+
+  const col = `rgb(${b.r},${b.g},${b.b})`;
+  const dark = `rgb(${b.r*0.7|0},${b.g*0.7|0},${b.b*0.7|0})`;
+
+  // ヒットエフェクト
+  if (b.hitCd > 30) {
+    ctx.strokeStyle = 'rgba(255,200,0,0.7)';
+    ctx.lineWidth = 2.5/s;
+    ctx.beginPath(); ctx.arc(0,0,38/s,0,Math.PI*2); ctx.stroke();
+  }
+
+  // 翼（上の羽）
+  const wingUp = Math.sin(b.wing) * 0.55;
+  ctx.fillStyle = dark;
+  ctx.save(); ctx.translate(-6,-4); ctx.rotate(-wingUp);
+  ctx.beginPath(); ctx.ellipse(0,-10,9,20,0.3,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // 体
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.ellipse(0,0,22,11,0,0,Math.PI*2); ctx.fill();
+
+  // 翼（下の羽）
+  ctx.fillStyle = dark;
+  ctx.save(); ctx.translate(-6,3); ctx.rotate(wingUp*0.4);
+  ctx.beginPath(); ctx.ellipse(0,7,7,14,-0.2,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // 頭
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(20,-4,9,0,Math.PI*2); ctx.fill();
+
+  // 目
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(23,-6,3,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.arc(24,-6.5,1.5,0,Math.PI*2); ctx.fill();
+
+  // くちばし
+  ctx.fillStyle='#FF8F00';
+  ctx.beginPath(); ctx.moveTo(29,-4); ctx.lineTo(37,-2); ctx.lineTo(29,0); ctx.closePath(); ctx.fill();
+
+  // 尾
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.moveTo(-22,0); ctx.lineTo(-36,-7); ctx.lineTo(-34,3); ctx.lineTo(-22,4); ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+// =================== かえる描画 ===================
+function drawFrog() {
+  const sy = toScreenY(frog.y);
+  ctx.save();
+  ctx.translate(frog.x, sy);
+  ctx.scale(frog.facing * frog.sqX, frog.sqY);
+
+  const W2 = 20, H2 = 17;
+
+  // 影
+  if (frog.onGround) {
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(0, H2+4, 14, 4, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 後ろ足（空中では広げる）
+  ctx.fillStyle = '#2E7D32';
+  if (frog.onGround) {
+    ctx.beginPath(); ctx.ellipse(-W2+4, H2-2, 11, 6, -0.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( W2-4, H2-2, 11, 6,  0.5, 0, Math.PI*2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(-W2-6, 4, 13, 6, -0.9, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( W2+6, 4, 13, 6,  0.9, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 体
+  const gr = ctx.createRadialGradient(-6,-4,3, 0,0,W2);
+  gr.addColorStop(0,'#81C784'); gr.addColorStop(0.5,'#388E3C'); gr.addColorStop(1,'#1B5E20');
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.ellipse(0, 2, W2, H2, 0, 0, Math.PI*2); ctx.fill();
+
+  // お腹
+  ctx.fillStyle = '#C8E6C9';
+  ctx.beginPath(); ctx.ellipse(2, 5, W2*0.55, H2*0.62, 0, 0, Math.PI*2); ctx.fill();
+
+  // 前足
+  ctx.fillStyle = '#388E3C';
+  ctx.beginPath(); ctx.ellipse(-W2+2, 6, 7, 4, 0.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( W2-2, 6, 7, 4, -0.5, 0, Math.PI*2); ctx.fill();
+
+  // 目（頭上に飛び出す）
+  const eyeOff = frog.onGround ? 0 : -1;
+  [[-9, eyeOff], [9, eyeOff]].forEach(([ex, ey]) => {
+    // 目玉の土台（頭）
+    ctx.fillStyle = '#2E7D32';
+    ctx.beginPath(); ctx.arc(ex, -H2+3+ey, 7, 0, Math.PI*2); ctx.fill();
+    // 白目
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex, -H2+2+ey, 5.5, 0, Math.PI*2); ctx.fill();
+    // 瞳
+    ctx.fillStyle = '#1A1A1A';
+    ctx.beginPath(); ctx.arc(ex+0.5, -H2+2.5+ey, 3.5, 0, Math.PI*2); ctx.fill();
+    // ハイライト
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(ex-1, -H2+1+ey, 1.3, 0, Math.PI*2); ctx.fill();
+  });
+
+  // 口
+  ctx.strokeStyle = '#1B5E20'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (frog.onGround) {
+    // ニコニコ
+    ctx.arc(0, 7, 7, 0.3, Math.PI-0.3);
+  } else {
+    // 真剣
+    ctx.moveTo(-5, 9); ctx.lineTo(5, 9);
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// =================== パーティクル描画 ===================
+function drawParticles() {
+  for (const p of particles) {
+    const sy = toScreenY(p.y);
+    ctx.save();
+    ctx.globalAlpha = p.life / 45;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, sy, p.size, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// =================== UI描画 ===================
+function drawUI() {
+  const alt = clamp((WORLD_H - frog.y) / (WORLD_H - GOAL_Y - 80), 0, 1);
+  const pct = Math.floor(alt * 100);
+
+  // プログレスバー
+  const bx=W-28, by=H*0.15, bh=H*0.55;
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.roundRect(bx-4,by-4,18,bh+8,5); ctx.fill();
+
+  const pg = ctx.createLinearGradient(0,by+bh,0,by);
+  pg.addColorStop(0,'#1565C0'); pg.addColorStop(0.5,'#4CAF50'); pg.addColorStop(1,'#FFE566');
+  ctx.fillStyle=pg;
+  ctx.beginPath(); ctx.roundRect(bx-2,by+bh-alt*bh,14,alt*bh,3); ctx.fill();
+
+  // ゴールアイコン
+  ctx.font='14px serif'; ctx.textAlign='center';
+  ctx.fillText('⭐', bx+5, by-6);
+
+  // かえるマーカー
+  const mY = by + bh - alt*bh;
+  ctx.fillStyle='#4CAF50';
+  ctx.beginPath(); ctx.arc(bx+5, mY, 5.5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=1.5;
+  ctx.stroke();
+
+  // 高度%
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(`${pct}%`, bx+5, by+bh+18);
+
+  // 海上昇カウントダウン & 警告
+  const remainSecs = Math.max(0, seaRiseSecs - Math.floor(gameTimer / 60));
+  const rising = gameTimer > seaRiseSecs * 60;
+  ctx.save();
+  ctx.textAlign = 'center';
+  if (!rising) {
+    // カウントダウン表示
+    const warn = remainSecs <= 5;
+    const alpha = warn ? (0.75 + 0.25 * Math.sin(Date.now() / 150)) : 0.85;
+    ctx.globalAlpha = alpha;
+    // 背景pill
+    const label = `🌊 ${remainSecs}秒後に海が上がる！`;
+    ctx.font = `bold ${warn ? 16 : 14}px sans-serif`;
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = warn ? 'rgba(180,0,0,0.55)' : 'rgba(0,0,60,0.45)';
+    ctx.beginPath(); ctx.roundRect(W/2 - tw/2 - 10, 10, tw + 20, 26, 8); ctx.fill();
+    ctx.fillStyle = warn ? '#FF8A80' : '#90CAF9';
+    ctx.fillText(label, W/2, 28);
+  } else {
+    // 上昇中警告（点滅）
+    const alpha = 0.8 + 0.2 * Math.sin(Date.now() / 180);
+    ctx.globalAlpha = alpha;
+    const label = '🌊 海が来るぞ！のぼれ！';
+    ctx.font = 'bold 17px sans-serif';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(200,0,0,0.6)';
+    ctx.beginPath(); ctx.roundRect(W/2 - tw/2 - 10, 10, tw + 20, 26, 8); ctx.fill();
+    ctx.fillStyle = '#FF5252';
+    ctx.fillText(label, W/2, 28);
+  }
+  ctx.restore();
+}
+
+// =================== タッチUI描画 ===================
+function drawTouchUI() {
+  const btns = [
+    {x:55,  y:H-70, r:38, label:'◀', active:tL},
+    {x:145, y:H-70, r:38, label:'▶', active:tR},
+    {x:W-70, y:H-65, r:44, label:'ジャンプ', active:tJ, small:true},
+  ];
+  ctx.save();
+  for (const b of btns) {
+    ctx.globalAlpha = b.active ? 0.65 : 0.32;
+    ctx.fillStyle = b.active ? '#4CAF50' : '#333';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#fff';
+    ctx.font = b.small ? 'bold 14px sans-serif' : 'bold 26px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(b.label, b.x, b.y);
+  }
+  ctx.textBaseline='alphabetic';
+  ctx.restore();
+}
+
+// =================== タイトル画面 ===================
+function drawTitle() {
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#4FC3F7'); g.addColorStop(0.65,'#81C784'); g.addColorStop(1,'#1565C0');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  drawCloud(30, 60, 150, 72, 0.9);
+  drawCloud(260,40, 130, 65, 0.85);
+  drawCloud(140,120,110, 55, 0.75);
+
+  ctx.save();
+  ctx.textAlign='center';
+
+  // かえるアイコン
+  ctx.font='90px serif';
+  ctx.fillText('🐸', W/2, 195);
+
+  // タイトル
+  ctx.shadowColor='rgba(0,0,0,0.35)'; ctx.shadowBlur=6; ctx.shadowOffsetY=3;
+  const tg = ctx.createLinearGradient(0,210,0,320);
+  tg.addColorStop(0,'#FFE566'); tg.addColorStop(0.5,'#FF9800'); tg.addColorStop(1,'#E65100');
+  ctx.fillStyle=tg;
+  ctx.font='bold 48px sans-serif'; ctx.fillText('かえるの', W/2, 255);
+  ctx.font='bold 44px sans-serif'; ctx.fillText('のぼりぼり！', W/2, 308);
+  ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+
+  // 操作説明
+  ctx.fillStyle='#1B5E20';
+  ctx.font='15px sans-serif';
+  ctx.fillText('← → (A/D)：左右移動', W/2, 360);
+  ctx.fillText('スペース / ↑ ：ジャンプ', W/2, 385);
+
+  // 鳥の説明
+  ctx.fillStyle='rgba(80,40,0,0.75)';
+  ctx.font='13px sans-serif';
+  ctx.fillText('⚠️ 鳥が邪魔をしてくる！海に落ちたらおしまい', W/2, 415);
+
+  // スタートボタン
+  if (Date.now()/500 % 2 < 1) {
+    ctx.fillStyle='#E65100';
+    ctx.font='bold 21px sans-serif';
+    ctx.fillText('スペース / タップでスタート！', W/2, 462);
+  }
+
+  // 海
+  ctx.fillStyle='#1565C0'; ctx.fillRect(0, H-75, W, 75);
+  ctx.font='28px serif'; ctx.fillText('🌊🌊🌊🌊🌊', W/2, H-38);
+
+  ctx.restore();
+}
+
+// =================== ゲームオーバー画面 ===================
+function drawGameOver() {
+  ctx.save();
+  ctx.fillStyle='rgba(0,30,120,0.82)'; ctx.fillRect(0,0,W,H);
+  ctx.textAlign='center';
+  ctx.font='90px serif'; ctx.fillText('😱', W/2, 195);
+  ctx.fillStyle='#fff';
+  ctx.font='bold 38px sans-serif'; ctx.fillText('うみに おちた！', W/2, 270);
+  ctx.fillStyle='#90CAF9';
+  ctx.font='20px sans-serif'; ctx.fillText('ゲームオーバー', W/2, 315);
+  ctx.fillStyle='#FFE566';
+  ctx.font='18px sans-serif'; ctx.fillText(`最高高度：${Math.floor(maxHeight / (WORLD_H - GOAL_Y) * 100)}%`, W/2, 360);
+  if (Date.now()/500 % 2 < 1) {
+    ctx.fillStyle='#fff';
+    ctx.font='bold 17px sans-serif'; ctx.fillText('スペース / タップでリトライ', W/2, 430);
+  }
+  ctx.restore();
+}
+
+// =================== クリア画面 ===================
+function drawWin() {
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#E1F5FE'); g.addColorStop(1,'#B3E5FC');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  for (let i=0; i<7; i++) drawCloud(i*80-20, 40+i*25, 120, 60, 0.72+i*0.03);
+
+  ctx.save(); ctx.textAlign='center';
+  ctx.font='70px serif';
+  ctx.fillText('🎉', W/2-75, 210);
+  ctx.fillText('🐸', W/2,    210);
+  ctx.fillText('🎉', W/2+75, 210);
+
+  const tg = ctx.createLinearGradient(0,230,0,330);
+  tg.addColorStop(0,'#FFD700'); tg.addColorStop(1,'#FF6F00');
+  ctx.fillStyle=tg; ctx.shadowColor='#FF6F00'; ctx.shadowBlur=8;
+  ctx.font='bold 44px sans-serif'; ctx.fillText('くものうえに', W/2, 278);
+  ctx.font='bold 44px sans-serif'; ctx.fillText('とうたつ！！', W/2, 330);
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle='#0277BD'; ctx.font='22px sans-serif'; ctx.fillText('おめでとう！🌟', W/2, 385);
+  if (Date.now()/600 % 2 < 1) {
+    ctx.fillStyle='#1B5E20'; ctx.font='bold 17px sans-serif'; ctx.fillText('スペース / タップでもう一回', W/2, 455);
+  }
+  ctx.restore();
+}
+
+// =================== メインループ ===================
+function loop() {
+  ctx.clearRect(0,0,W,H);
+
+  if (state === S.TITLE) {
+    drawTitle();
+  } else if (state === S.PLAY) {
+    update();
+    drawBG();
+    drawPads();
+    drawParticles();
+    birds.forEach(drawBird);
+    drawFrog();
+    drawUI();
+    drawTouchUI();
+  } else if (state === S.OVER) {
+    drawBG();
+    drawPads();
+    birds.forEach(drawBird);
+    drawFrog();
+    drawGameOver();
+  } else if (state === S.WIN) {
+    drawWin();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// =================== 設定パネル ===================
+function applyAndStart() {
+  const v = parseInt(document.getElementById('seaTimeInput').value, 10);
+  seaRiseSecs = (isNaN(v) || v < 5) ? 5 : Math.min(v, 300);
+  document.getElementById('seaTimeInput').value = seaRiseSecs;
+  ensureAudio();
+  startGame();
+}
+
+// =================== ユーティリティ ===================
+function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function lerpColor(a, b, t) {
+  return [
+    (a[0] + (b[0]-a[0])*t)|0,
+    (a[1] + (b[1]-a[1])*t)|0,
+    (a[2] + (b[2]-a[2])*t)|0,
+  ];
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
