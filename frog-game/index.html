@@ -139,6 +139,7 @@ let bgmRunning = false;
 let bgmTimeout = null;
 let bgmIdx = 0;
 let soundDone = false; // ゲームオーバー/クリア音の重複防止
+let stateChangedAt = 0; // 状態変化タイムスタンプ（即時リスタートバグ防止）
 
 function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -290,7 +291,10 @@ document.addEventListener('keydown', e => {
   // 初回操作でオーディオ初期化＆BGM開始
   if (!audioCtx) { ensureAudio(); startBGM(); }
   if (state !== S.PLAY) {
-    if (e.code === 'Space' || e.code === 'Enter') startGame();
+    // 400ms のクールダウン：キーリピートによる即時リスタートを防ぐ
+    if ((e.code === 'Space' || e.code === 'Enter') && Date.now() - stateChangedAt > 400) {
+      startGame();
+    }
   }
 });
 document.addEventListener('keyup', e => keys[e.code] = false);
@@ -309,8 +313,12 @@ function handleTouchAll(e) {
     const tx = (t.clientX - r.left) / scale;
     const ty = (t.clientY - r.top)  / scale;
     if (state !== S.PLAY) {
-      if (!audioCtx) { ensureAudio(); startBGM(); }
-      startGame(); return;
+      // 400ms のクールダウン：touchmove による即時リスタートを防ぐ
+      if (Date.now() - stateChangedAt > 400) {
+        if (!audioCtx) { ensureAudio(); startBGM(); }
+        startGame();
+      }
+      return;
     }
     if (ty > H - 130) {
       if (tx < W*0.25) tL = true;
@@ -416,6 +424,7 @@ function update() {
         playWinSound();
         stopBGM();
         state = S.WIN;
+        stateChangedAt = Date.now();
       }
     } else {
       pad.wasOn = false;
@@ -487,6 +496,7 @@ function update() {
     playGameoverSound();
     stopBGM();
     state = S.OVER;
+    stateChangedAt = Date.now();
   }
 }
 
