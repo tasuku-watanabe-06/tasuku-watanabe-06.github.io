@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Issue Sphere — 世界の声を可視化</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07091a;
+      --card: #0d1332;
+      --card2: #111840;
+      --border: rgba(255,255,255,0.08);
+      --text: #e8eaf6;
+      --text2: #8892b0;
+      --accent: #00d4ff;
+      --cat-economy: #f59e0b;
+      --cat-environment: #10b981;
+      --cat-politics: #ef4444;
+      --cat-health: #3b82f6;
+      --cat-social: #8b5cf6;
+      --cat-tech: #ec4899;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Noto Sans JP', -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: rgba(7,9,26,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 1.2rem; font-weight: 700; letter-spacing: -0.5px;
+      text-decoration: none; color: var(--text);
+    }
+    .logo-sphere {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #00d4ff, #7c3aed);
+      box-shadow: 0 0 16px rgba(0,212,255,0.5);
+    }
+    .logo span { color: var(--accent); }
+    nav { display: flex; align-items: center; gap: 24px; }
+    nav a { color: var(--text2); text-decoration: none; font-size: 0.875rem; transition: color .2s; }
+    nav a:hover { color: var(--text); }
+    .search-bar {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 12px; width: 220px;
+    }
+    .search-bar input {
+      background: none; border: none; outline: none;
+      color: var(--text); font-size: 0.875rem; width: 100%;
+    }
+    .search-bar input::placeholder { color: var(--text2); }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      padding: 80px 60px 40px;
+      gap: 40px;
+      position: relative;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(0,212,255,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-sphere { display: flex; justify-content: center; align-items: center; }
+    #sphereCanvas { width: 480px; height: 480px; cursor: grab; }
+    .hero-content h1 {
+      font-size: 2.8rem; font-weight: 700; line-height: 1.2;
+      margin-bottom: 16px; letter-spacing: -1px;
+    }
+    .hero-content h1 .highlight {
+      background: linear-gradient(135deg, #00d4ff, #7c3aed);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .hero-content p { color: var(--text2); font-size: 1rem; line-height: 1.7; margin-bottom: 32px; }
+
+    .live-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3);
+      color: #ef4444; border-radius: 100px; padding: 4px 10px;
+      font-size: 0.75rem; font-weight: 600; margin-bottom: 20px;
+    }
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #ef4444; animation: blink 1.5s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 32px; }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .stat-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 0.75rem; color: var(--text2); margin-top: 4px; }
+
+    .cta-buttons { display: flex; gap: 12px; }
+    .btn-primary {
+      background: linear-gradient(135deg, #00d4ff, #0080ff);
+      color: #fff; border: none; border-radius: 8px;
+      padding: 12px 24px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: opacity .2s, transform .2s;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-secondary {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 24px; font-size: 0.9rem; font-weight: 500;
+      cursor: pointer; transition: border-color .2s, transform .2s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+    /* ── Ticker ── */
+    .ticker-wrap {
+      background: var(--card); border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden; padding: 10px 0; white-space: nowrap;
+    }
+    .ticker-inner { display: inline-flex; animation: ticker 35s linear infinite; gap: 48px; }
+    .ticker-item { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text2); }
+    @keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+
+    /* ── Main ── */
+    .main { max-width: 1400px; margin: 0 auto; padding: 60px 40px 80px; }
+
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;
+    }
+    .section-title { font-size: 1.3rem; font-weight: 700; }
+    .section-title span { color: var(--accent); }
+
+    /* ── Charts ── */
+    .chart-section { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 60px; }
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px;
+    }
+    .chart-title { font-size: 1rem; font-weight: 600; margin-bottom: 20px; }
+
+    .activity-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+    .activity-text { font-size: 0.83rem; color: var(--text2); line-height: 1.5; }
+    .activity-time { font-size: 0.72rem; color: rgba(255,255,255,0.3); margin-top: 3px; }
+
+    /* ── Category Filter ── */
+    .category-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+    .cat-btn {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 0.8rem; color: var(--text2); cursor: pointer;
+      transition: all .2s; white-space: nowrap;
+    }
+    .cat-btn:hover, .cat-btn.active {
+      color: var(--text);
+      border-color: var(--cat-color);
+      background: color-mix(in srgb, var(--cat-color) 12%, transparent);
+    }
+
+    /* ── Issue Cards ── */
+    .issues-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(360px,1fr)); gap: 20px; }
+    .issue-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 20px;
+      cursor: pointer; transition: transform .2s, border-color .2s, box-shadow .2s;
+      position: relative; overflow: hidden;
+    }
+    .issue-card::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; background: var(--cat-color);
+    }
+    .issue-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255,255,255,0.15);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+    .card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+    .cat-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.7rem; color: var(--cat-color);
+      background: color-mix(in srgb, var(--cat-color) 15%, transparent);
+      border-radius: 4px; padding: 2px 8px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+    }
+    .severity { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+    .severity.high { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .severity.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .severity.low { background: rgba(16,185,129,0.15); color: #10b981; }
+    .issue-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
+    .ai-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.65rem; color: var(--accent);
+      background: rgba(0,212,255,0.1); border-radius: 4px;
+      padding: 2px 6px; margin-bottom: 8px;
+    }
+    .ai-summary { font-size: 0.83rem; color: var(--text2); line-height: 1.65; margin-bottom: 14px; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .count-row { display: flex; align-items: center; gap: 6px; }
+    .count-val { font-size: 1.1rem; font-weight: 700; }
+    .trend { font-size: 0.75rem; font-weight: 600; }
+    .trend.up { color: #ef4444; }
+    .trend.down { color: #10b981; }
+    .countries { font-size: 1.1rem; letter-spacing: 2px; }
+    .sources { display: flex; gap: 4px; flex-wrap: wrap; }
+    .src-badge {
+      font-size: 0.65rem; padding: 2px 6px;
+      background: var(--card2); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text2);
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+      z-index: 200; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px; padding: 32px;
+      max-width: 620px; width: 90%; max-height: 85vh; overflow-y: auto;
+      position: relative;
+    }
+    .modal-close {
+      position: absolute; top: 16px; right: 16px;
+      background: none; border: none; color: var(--text2);
+      font-size: 1.2rem; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .modal-close:hover { background: var(--card2); color: var(--text); }
+    .modal h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; padding-right: 32px; line-height: 1.3; }
+    .modal-sec { margin-bottom: 20px; }
+    .modal-sec h3 {
+      font-size: 0.75rem; color: var(--text2); text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 10px; font-weight: 600;
+    }
+    .modal-sec p { font-size: 0.9rem; line-height: 1.75; color: var(--text); }
+    .raw-posts { display: flex; flex-direction: column; gap: 10px; }
+    .raw-post { background: var(--card2); border-radius: 8px; padding: 12px; font-size: 0.82rem; color: var(--text2); line-height: 1.55; }
+    .raw-post .post-meta { font-size: 0.7rem; color: rgba(255,255,255,0.25); margin-top: 6px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .hero { grid-template-columns: 1fr; text-align: center; padding: 100px 30px 40px; }
+      .hero-sphere { order: -1; }
+      #sphereCanvas { width: 320px; height: 320px; }
+      .hero-content h1 { font-size: 2.1rem; }
+      .cta-buttons { justify-content: center; }
+      .chart-section { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      nav { display: none; }
+      .search-bar { width: 150px; }
+      #sphereCanvas { width: 260px; height: 260px; }
+      .stats-grid { grid-template-columns: repeat(3,1fr); }
+      .stat-value { font-size: 1.3rem; }
+      .stat-label { font-size: 0.65rem; }
+      .issues-grid { grid-template-columns: 1fr; }
+      .main { padding: 40px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <a class="logo" href="#">
+    <div class="logo-sphere"></div>Issue<span>Sphere</span>
+  </a>
+  <nav>
+    <a href="#">ダッシュボード</a>
+    <a href="#">カテゴリ</a>
+    <a href="#">地域別</a>
+    <a href="#">トレンド</a>
+  </nav>
+  <div class="search-bar">
+    <span style="color:var(--text2);">🔍</span>
+    <input type="text" placeholder="イシューを検索..." id="searchInput">
+  </div>
+</header>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-sphere">
+    <canvas id="sphereCanvas" width="480" height="480"></canvas>
+  </div>
+  <div class="hero-content">
+    <div class="live-badge"><span class="live-dot"></span>LIVE データ更新中</div>
+    <h1>世界の声を、<br><span class="highlight">リアルタイムで</span><br>可視化する</h1>
+    <p>SNSや掲示板から収集した世界中の不満・課題をAIが自動で要約・グルーピング。<br>社会の「今」を一目で把握できるダッシュボード。</p>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalCount">0</div>
+        <div class="stat-label">収集済み投稿数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">142</div>
+        <div class="stat-label">対応言語・地域</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">18</div>
+        <div class="stat-label">イシュークラスター</div>
+      </div>
+    </div>
+    <div class="cta-buttons">
+      <button class="btn-primary" onclick="document.querySelector('.main').scrollIntoView({behavior:'smooth'})">イシューを探索 →</button>
+      <button class="btn-secondary">API ドキュメント</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── Ticker ── -->
+<div class="ticker-wrap"><div class="ticker-inner" id="ticker"></div></div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- Charts -->
+  <div class="chart-section">
+    <div class="chart-card">
+      <div class="chart-title">📊 カテゴリ別イシュー分布</div>
+      <canvas id="categoryChart" height="260"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">⚡ リアルタイム更新</div>
+      <div id="activityFeed"></div>
+    </div>
+  </div>
+
+  <!-- Issue list -->
+  <div class="section-header">
+    <div class="section-title">🌍 注目の<span>イシュー</span></div>
+    <span style="font-size:0.8rem;color:var(--text2);">最終更新: 5分前</span>
+  </div>
+  <div class="category-filter" id="categoryFilter"></div>
+  <div class="issues-grid" id="issuesGrid"></div>
+</div>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <button class="modal-close" id="modalClose">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// DATA
+// ════════════════════════════════════════════════
+const CATEGORIES = {
+  all:         { label: 'すべて',      color: '#8892b0', icon: '🌐' },
+  economy:     { label: '経済・格差',  color: '#f59e0b', icon: '💰' },
+  environment: { label: '環境・気候',  color: '#10b981', icon: '🌿' },
+  politics:    { label: '政治',        color: '#ef4444', icon: '🏛️' },
+  health:      { label: '健康・医療',  color: '#3b82f6', icon: '🏥' },
+  social:      { label: '社会',        color: '#8b5cf6', icon: '👥' },
+  tech:        { label: 'テクノロジー',color: '#ec4899', icon: '🤖' },
+};
+
+const ISSUES = [
+  {
+    id:1, title:'物価高騰・インフレ', category:'economy',
+    count:284729, trend:'up', trendPct:23, severity:'high',
+    countries:['🇯🇵','🇺🇸','🇬🇧','🇩🇪','🇫🇷'],
+    sources:['X (Twitter)','Reddit','2ch'],
+    summary:'食料品・エネルギー価格の急上昇により、世界中の家庭で生活苦が増加。特に低所得層への影響が深刻で、政府の対応を求める声が急増している。',
+    detail:'中央銀行の利上げ政策にもかかわらず食料・エネルギーを中心にインフレが持続。家計の実質購買力が低下し「もう外食できない」「光熱費が払えない」といった声がSNS上で急増。政府の補助金対策を求める意見が多数を占める。',
+    rawPosts:[
+      {text:'スーパーのレジ打ちながら、自分が買えないものを売ってる感覚。毎月カード明細を見るのが怖い', src:'X @anon_life_jp', time:'2h前'},
+      {text:'Energy bill went up 40% this winter. Working two jobs and still barely making rent.', src:'Reddit r/personalfinance', time:'3h前'},
+      {text:'電気代・ガス代・食費、全部上がってる。給料は全然上がらないのに', src:'2ch 生活板', time:'4h前'},
+    ]
+  },
+  {
+    id:2, title:'気候変動・異常気象', category:'environment',
+    count:312456, trend:'up', trendPct:31, severity:'high',
+    countries:['🇦🇺','🇮🇳','🇺🇸','🇧🇷','🇩🇪'],
+    sources:['X (Twitter)','Facebook','News Comments'],
+    summary:'記録的な熱波・洪水・山火事が頻発し、気候変動への危機感が世界的に高まっている。若い世代を中心に政府への行動要求が強まっている。',
+    detail:'2024年は観測史上最も暑い年を記録。オーストラリアでは大規模な山火事、インドでは熱波による死者が増加。国連の報告書発表をきっかけにSNS上では政府の気候政策への批判と行動を求める声が急増。',
+    rawPosts:[
+      {text:'My hometown in Queensland has burned 3 times in 5 years. The politicians are criminals.', src:'X @au_resident', time:'1h前'},
+      {text:'インドでは40度超えが当たり前になってきた。30年前はこんなじゃなかった', src:'Facebook', time:'5h前'},
+      {text:'子どもに「将来何になりたい？」って聞けなくなってきた。地球があるかわからない', src:'X @mother_of_3', time:'6h前'},
+    ]
+  },
+  {
+    id:3, title:'メンタルヘルス危機', category:'health',
+    count:198234, trend:'up', trendPct:18, severity:'high',
+    countries:['🇯🇵','🇺🇸','🇰🇷','🇬🇧','🇨🇦'],
+    sources:['X (Twitter)','Reddit','5ch'],
+    summary:'孤独感・燃え尽き症候群・SNS依存による精神的不調が増加中。特に若年層での深刻化が報告されており、医療体制の不足が問題視されている。',
+    detail:'コロナ禍後も孤独感やうつ傾向は改善されず、むしろ悪化している地域も存在する。「誰にも話せない」「セラピーは高すぎて受けられない」といった声が多数。韓国・日本では自殺率の増加が社会問題として注目されている。',
+    rawPosts:[
+      {text:'3年間ひとりで抱えてきた。やっと話せる場所を探してたらこのスレを見つけた', src:'5ch メンタルヘルス板', time:'2h前'},
+      {text:'Therapy costs $200/session. Insurance covers 6 sessions per year. What a joke.', src:'Reddit r/mentalhealth', time:'3h前'},
+      {text:'번아웃인데 회사에서 티를 못 내. 강한 척 해야 해서 더 힘들어', src:'X @kr_worker', time:'7h前'},
+    ]
+  },
+  {
+    id:4, title:'政治家・政府への不信', category:'politics',
+    count:201847, trend:'up', trendPct:15, severity:'high',
+    countries:['🇯🇵','🇺🇸','🇫🇷','🇰🇷','🇧🇷'],
+    sources:['X (Twitter)','2ch','Facebook'],
+    summary:'汚職・政策不一致・既得権益への批判が世界的に拡大。「どの党に投票しても変わらない」という無力感が民主主義への信頼低下につながっている。',
+    detail:'各国での選挙不正疑惑、政治家のスキャンダル、ロビイスト問題などが重なり、政治不信が過去最高水準に。SNS上では「投票する意味がない」という諦念と変革を求める怒りが混在している。',
+    rawPosts:[
+      {text:'裏金議員が笑顔で記者会見してる。あれが現実か。選挙行く気なくなる', src:'X @jp_voter', time:'1h前'},
+      {text:'Every politician promises change. Nothing changes. The system is rigged.', src:'Reddit r/politics', time:'4h前'},
+      {text:'국회의원 특권 폐지는 언제쯤 되나', src:'Facebook', time:'8h前'},
+    ]
+  },
+  {
+    id:5, title:'AIによる雇用喪失の不安', category:'tech',
+    count:156832, trend:'up', trendPct:41, severity:'medium',
+    countries:['🇺🇸','🇯🇵','🇩🇪','🇬🇧','🇮🇳'],
+    sources:['X (Twitter)','LinkedIn','Reddit'],
+    summary:'ChatGPTなど生成AIの普及でホワイトカラー職の代替が現実化。特にデザイナー・ライター・カスタマーサポート職での不安が高まっている。',
+    detail:'大手企業がAI導入を理由にしたリストラを発表するケースが増加。「10年後に自分の仕事があるか不安」という声がLinkedInやXで急増。政府によるAI規制・最低所得保障への議論が高まっている。',
+    rawPosts:[
+      {text:"Spent 5 years building my copywriting portfolio. Now GPT-4 can do it in 30 seconds. What do I do?", src:'Reddit r/freelance', time:'2h前'},
+      {text:'デザインの仕事、半分Midjourneyに取られた気がする。単価も下がってる', src:'X @freelance_designer', time:'3h前'},
+      {text:'AI is not the problem. Corporations using AI to fire people while hoarding profits is.', src:'LinkedIn', time:'5h前'},
+    ]
+  },
+  {
+    id:6, title:'住宅価格高騰・持ち家の夢', category:'economy',
+    count:156234, trend:'up', trendPct:19, severity:'high',
+    countries:['🇨🇦','🇦🇺','🇬🇧','🇯🇵','🇳🇿'],
+    sources:['X (Twitter)','Reddit','Facebook'],
+    summary:'主要都市での不動産価格が年収の10倍以上に達し、若い世代の持ち家取得が事実上不可能に。世代間格差への怒りも根深い。',
+    detail:'バンクーバー・シドニー・ロンドン・東京などで住宅価格が過去30年で3〜5倍に上昇。共働きでも頭金が貯まらないという声が多数。低金利時代に不動産を購入した世代との格差への怒りがSNSで表面化している。',
+    rawPosts:[
+      {text:"I make $90k a year and I still can't afford a studio apartment in Toronto. Something is broken.", src:'Reddit r/canada', time:'1h前'},
+      {text:'都内で家買おうと思ったら1億必要って。共働きで何年貯めればいいの', src:'X @30s_couple', time:'6h前'},
+      {text:"My parents bought their house for $60k in 1985. Now it's worth $1.2M. Good for them, tough for me.", src:'Facebook', time:'9h前'},
+    ]
+  },
+  {
+    id:7, title:'格差社会・富の集中', category:'social',
+    count:234128, trend:'up', trendPct:12, severity:'high',
+    countries:['🇺🇸','🇧🇷','🇮🇳','🇫🇷','🇯🇵'],
+    sources:['X (Twitter)','Reddit','Mastodon'],
+    summary:'上位1%が富の過半数を占める構造が固定化。「努力しても報われない」という閉塞感が若い世代に蔓延し、社会変革への関心と無気力が同時に存在している。',
+    detail:'世界の富上位10人の資産が下位40億人の合計を超えた。SNS上では「頑張っても貧乏なまま」「資本主義の終わり」といった投稿が増加。富裕税や最低賃金引上げを求める声が各国で高まっている。',
+    rawPosts:[
+      {text:'Elon Musk makes more in one second than I make in a year. This is supposed to be okay?', src:'X @worker_rights', time:'30m前'},
+      {text:'親が金持ちかどうかで人生変わりすぎる。努力より生まれが大事な社会ってなんなの', src:'2ch 社会板', time:'2h前'},
+      {text:'O Brasil tem bilionários que nunca trabalharam um dia na vida.', src:'Twitter', time:'4h前'},
+    ]
+  },
+  {
+    id:8, title:'SNS・スマホ依存と精神健康', category:'tech',
+    count:167432, trend:'up', trendPct:27, severity:'medium',
+    countries:['🇺🇸','🇰🇷','🇯🇵','🇬🇧','🇵🇭'],
+    sources:['X (Twitter)','TikTok Comments','Reddit'],
+    summary:'TikTokやInstagramの過剰使用による睡眠障害・自己肯定感低下が特に10〜20代に蔓延。親世代との意識ギャップも社会問題化している。',
+    detail:'10代の平均スクリーンタイムが1日7時間を超える国が続出。SNSでの比較による自己嫌悪、フォロワー数・いいね数への依存が顕著。一部の国では規制法案が検討されている。',
+    rawPosts:[
+      {text:'I deleted TikTok for 30 days. I slept better, felt better, got stuff done. Why did I ever download it?', src:'Reddit r/digitalminimalism', time:'1h前'},
+      {text:'中学生の娘がインスタで他の子と比べて泣いてた。何も言えなかった', src:'X @parent_of_teen', time:'4h前'},
+      {text:'스마트폰 없이 10분도 못 견디는 나... 언제부터 이렇게 됐지', src:'X @kr_twenties', time:'6h前'},
+    ]
+  },
+];
+
+const SPHERE_KW = [
+  {label:'インフレ',   cat:'economy',     sz:3.2},
+  {label:'気候変動',  cat:'environment', sz:3.5},
+  {label:'メンタル',  cat:'health',      sz:2.8},
+  {label:'政治不信',  cat:'politics',    sz:3.0},
+  {label:'AI雇用',    cat:'tech',        sz:2.6},
+  {label:'住宅難',    cat:'economy',     sz:2.7},
+  {label:'格差',      cat:'social',      sz:3.1},
+  {label:'SNS依存',   cat:'tech',        sz:2.3},
+  {label:'食料危機',  cat:'environment', sz:2.0},
+  {label:'少子化',    cat:'social',      sz:2.0},
+  {label:'汚職',      cat:'politics',    sz:2.4},
+  {label:'医療費',    cat:'health',      sz:2.2},
+  {label:'若者失業',  cat:'economy',     sz:2.0},
+  {label:'海洋汚染',  cat:'environment', sz:1.8},
+  {label:'差別',      cat:'social',      sz:2.3},
+  {label:'プライバシー',cat:'tech',      sz:1.8},
+  {label:'老後不安',  cat:'social',      sz:2.0},
+  {label:'水不足',    cat:'environment', sz:1.6},
+  {label:'教育格差',  cat:'social',      sz:1.8},
+  {label:'貧困',      cat:'economy',     sz:2.5},
+  {label:'孤独',      cat:'social',      sz:2.2},
+  {label:'移民問題',  cat:'politics',    sz:2.0},
+  {label:'賃金格差',  cat:'economy',     sz:2.0},
+  {label:'ジェンダー',cat:'social',      sz:1.8},
+  {label:'大気汚染',  cat:'environment', sz:1.6},
+  {label:'サイバー',  cat:'tech',        sz:1.5},
+  {label:'介護問題',  cat:'health',      sz:1.8},
+  {label:'核問題',    cat:'politics',    sz:1.5},
+  {label:'自殺',      cat:'health',      sz:1.5},
+  {label:'過労',      cat:'social',      sz:2.0},
+];
+
+const TICKER = [
+  {flag:'🇯🇵', txt:'物価高騰への不満が2週連続でTOPに'},
+  {flag:'🇺🇸', txt:'Healthcare costs trending +34% this week'},
+  {flag:'🇩🇪', txt:'Wohnungsnot in Großstädten eskaliert'},
+  {flag:'🇰🇷', txt:'청년 취업난 관련 게시물 급증'},
+  {flag:'🇧🇷', txt:'Desigualdade social atinge recorde histórico'},
+  {flag:'🇦🇺', txt:'Housing affordability hits all-time low in major cities'},
+  {flag:'🇮🇳', txt:'Air quality concerns spike during festival season'},
+  {flag:'🌍', txt:'AIによる雇用不安、世界41ヶ国でトレンド入り'},
+  {flag:'🌏', txt:'気候変動関連ポスト、今週+31%の急増'},
+];
+
+const ACTIVITY = [
+  {txt:'「物価高騰」クラスターに新規 2,847 件の投稿を追加', time:'5分前',  col:'#f59e0b'},
+  {txt:'オーストラリアで「気候変動」関連投稿が急増 (+892件)', time:'12分前', col:'#10b981'},
+  {txt:'「AIと雇用」に新たな英語投稿グループを検出', time:'18分前', col:'#ec4899'},
+  {txt:'韓国語の「メンタルヘルス」投稿を 1,203 件グルーピング', time:'31分前', col:'#3b82f6'},
+  {txt:'ブラジルポルトガル語ソースを新たに追加', time:'45分前', col:'#8b5cf6'},
+  {txt:'「住宅価格」クラスターのトレンドスコアが更新', time:'1時間前', col:'#f59e0b'},
+];
+
+// ════════════════════════════════════════════════
+// SPHERE
+// ════════════════════════════════════════════════
+class IssueSphere {
+  constructor(id) {
+    this.canvas = document.getElementById(id);
+    this.ctx = this.canvas.getContext('2d');
+    this.rot = 0;
+    this.dragging = false;
+    this.lastX = 0;
+    this.pts = this.genPoints();
+    this.bindEvents();
+    this.tick();
+  }
+
+  genPoints() {
+    const n = SPHERE_KW.length;
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    return SPHERE_KW.map((kw, i) => {
+      const y = 1 - (i / (n - 1)) * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const t = phi * i;
+      return { ox: Math.cos(t) * r, oy: y, oz: Math.sin(t) * r, label: kw.label, cat: kw.cat, sz: kw.sz };
+    });
+  }
+
+  bindEvents() {
+    this.canvas.addEventListener('mousedown', e => { this.dragging = true; this.lastX = e.clientX; this.canvas.style.cursor = 'grabbing'; });
+    document.addEventListener('mousemove', e => { if (this.dragging) { this.rot += (e.clientX - this.lastX) * 0.01; this.lastX = e.clientX; } });
+    document.addEventListener('mouseup', () => { this.dragging = false; this.canvas.style.cursor = 'grab'; });
+    // touch
+    this.canvas.addEventListener('touchstart', e => { this.dragging = true; this.lastX = e.touches[0].clientX; }, {passive:true});
+    document.addEventListener('touchmove', e => { if (this.dragging) { this.rot += (e.touches[0].clientX - this.lastX) * 0.012; this.lastX = e.touches[0].clientX; } }, {passive:true});
+    document.addEventListener('touchend', () => { this.dragging = false; });
+  }
+
+  rotY(x, z, a) { return { x: x * Math.cos(a) - z * Math.sin(a), z: x * Math.sin(a) + z * Math.cos(a) }; }
+
+  draw() {
+    const { canvas: cv, ctx } = this;
+    const W = cv.width, H = cv.height, cx = W / 2, cy = H / 2;
+    const R = Math.min(W, H) * 0.38;
+    ctx.clearRect(0, 0, W, H);
+
+    // glow
+    const g = ctx.createRadialGradient(cx - R * .3, cy - R * .3, 0, cx, cy, R * 1.1);
+    g.addColorStop(0, 'rgba(0,180,255,0.07)');
+    g.addColorStop(.6, 'rgba(100,0,255,0.03)');
+    g.addColorStop(1, 'transparent');
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+
+    // outline
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,212,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+
+    // latitude rings
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = .5;
+    [-60, -30, 0, 30, 60].forEach(lat => {
+      const yr = Math.sin(lat * Math.PI / 180) * R;
+      const xr = Math.cos(lat * Math.PI / 180) * R;
+      ctx.beginPath(); ctx.ellipse(cx, cy + yr, xr, xr * .15, 0, 0, Math.PI * 2); ctx.stroke();
+    });
+
+    // points
+    const pts = this.pts.map(p => {
+      const r = this.rotY(p.ox, p.oz, this.rot);
+      return { ...p, rx: r.x, ry: p.oy, rz: r.z };
+    }).sort((a, b) => a.rz - b.rz);
+
+    pts.forEach(p => {
+      const scale = (p.rz + 1.5) / 2.5;
+      const sx = cx + p.rx * R, sy = cy + p.ry * R;
+      const alpha = Math.max(0.08, (p.rz + 1) / 2);
+      const col = CATEGORIES[p.cat].color;
+      const hex2 = n => Math.round(n).toString(16).padStart(2, '0');
+
+      // halo
+      ctx.beginPath(); ctx.arc(sx, sy, p.sz * scale * 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = col + hex2(alpha * 60); ctx.fill();
+      // dot
+      ctx.beginPath(); ctx.arc(sx, sy, p.sz * scale, 0, Math.PI * 2);
+      ctx.fillStyle = col + hex2(alpha * 255); ctx.fill();
+      // label (front hemisphere only)
+      if (p.rz > -0.15) {
+        const fs = Math.max(9, 13 * scale);
+        ctx.font = `${Math.round(fs)}px "Noto Sans JP", sans-serif`;
+        ctx.fillStyle = `rgba(255,255,255,${alpha * .92})`;
+        ctx.textAlign = 'center';
+        ctx.fillText(p.label, sx, sy - p.sz * scale * 3.5 - 2);
+      }
+    });
+
+    if (!this.dragging) this.rot += 0.003;
+  }
+
+  tick() { this.draw(); requestAnimationFrame(() => this.tick()); }
+}
+
+// ════════════════════════════════════════════════
+// UI HELPERS
+// ════════════════════════════════════════════════
+function fmt(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return n.toString();
+}
+
+let _countFrom = 0, _countRafId = null;
+function animCount(el, target, dur = 2000) {
+  if (_countRafId) cancelAnimationFrame(_countRafId);
+  const from = _countFrom;
+  const t0 = performance.now();
+  const step = now => {
+    const p = Math.min((now - t0) / dur, 1);
+    const val = Math.round(from + (1 - Math.pow(1 - p, 3)) * (target - from));
+    el.textContent = fmt(val);
+    if (p < 1) { _countRafId = requestAnimationFrame(step); }
+    else { _countFrom = target; _countRafId = null; }
+  };
+  _countRafId = requestAnimationFrame(step);
+}
+
+// ════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════
+let activeCat = 'all';
+
+function renderFilter() {
+  const el = document.getElementById('categoryFilter');
+  el.innerHTML = Object.entries(CATEGORIES).map(([k, c]) => {
+    const cnt = k === 'all' ? ISSUES.length : ISSUES.filter(i => i.category === k).length;
+    return `<button class="cat-btn ${activeCat === k ? 'active' : ''}"
+      style="--cat-color:${c.color}"
+      onclick="setCategory('${k}')">
+      <span>${c.icon}</span><span>${c.label}</span>
+      <span style="color:${c.color};font-size:.7rem;">${cnt}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderIssues(filter = '') {
+  const grid = document.getElementById('issuesGrid');
+  let list = activeCat === 'all' ? ISSUES : ISSUES.filter(i => i.category === activeCat);
+  if (filter) list = list.filter(i => i.title.includes(filter) || i.summary.includes(filter));
+
+  grid.innerHTML = list.map(issue => {
+    const c = CATEGORIES[issue.category];
+    return `<div class="issue-card" style="--cat-color:${c.color}" onclick="openModal(${issue.id})">
+      <div class="card-top">
+        <span class="cat-tag" style="--cat-color:${c.color}">${c.icon} ${c.label}</span>
+        <span class="severity ${issue.severity}">${issue.severity === 'high' ? '🔴 重大' : issue.severity === 'medium' ? '🟡 中程度' : '🟢 低'}</span>
+      </div>
+      <div class="issue-title">${issue.title}</div>
+      <div class="ai-badge">✨ AI要約</div>
+      <div class="ai-summary">${issue.summary}</div>
+      <div class="card-footer">
+        <div class="count-row">
+          <span class="count-val">${fmt(issue.count)}</span>
+          <span class="trend ${issue.trend}">${issue.trend === 'up' ? '▲' : '▼'} ${issue.trendPct}%</span>
+        </div>
+        <div class="countries">${issue.countries.join(' ')}</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+        <div class="sources">${issue.sources.map(s => `<span class="src-badge">${s}</span>`).join('')}</div>
+        <span style="font-size:.75rem;color:var(--text2);">詳細を見る →</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setCategory(cat) {
+  activeCat = cat;
+  renderFilter();
+  renderIssues(document.getElementById('searchInput').value);
+}
+
+function openModal(id) {
+  const issue = ISSUES.find(i => i.id === id);
+  if (!issue) return;
+  const c = CATEGORIES[issue.category];
+  document.getElementById('modalContent').innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+      <span class="cat-tag" style="--cat-color:${c.color}">${c.icon} ${c.label}</span>
+      <span class="severity ${issue.severity}">${issue.severity === 'high' ? '🔴 重大' : '🟡 中程度'}</span>
+      <div class="live-badge" style="margin-bottom:0;padding:2px 8px;font-size:.7rem;"><span class="live-dot"></span>LIVE</div>
+    </div>
+    <h2>${issue.title}</h2>
+    <div class="modal-sec"><h3>✨ AI 詳細サマリー</h3><p>${issue.detail}</p></div>
+    <div class="modal-sec">
+      <h3>📊 統計データ</h3>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        <div class="stat-card" style="padding:12px;"><div class="stat-value" style="font-size:1.3rem;">${fmt(issue.count)}</div><div class="stat-label">総投稿数</div></div>
+        <div class="stat-card" style="padding:12px;"><div class="stat-value" style="font-size:1.3rem;color:${issue.trend==='up'?'#ef4444':'#10b981'};">${issue.trend==='up'?'▲':'▼'} ${issue.trendPct}%</div><div class="stat-label">前週比</div></div>
+        <div class="stat-card" style="padding:12px;"><div class="stat-value" style="font-size:1.3rem;">${issue.countries.length}</div><div class="stat-label">対象国数</div></div>
+      </div>
+    </div>
+    <div class="modal-sec"><h3>🌍 関連地域</h3><div style="font-size:1.5rem;letter-spacing:4px;">${issue.countries.join(' ')}</div></div>
+    <div class="modal-sec">
+      <h3>💬 代表的な声（原文）</h3>
+      <div class="raw-posts">${issue.rawPosts.map(p => `
+        <div class="raw-post">"${p.text}"<div class="post-meta">${p.src} · ${p.time}</div></div>
+      `).join('')}</div>
+    </div>
+    <div class="modal-sec"><h3>📡 データソース</h3>
+      <div class="sources">${issue.sources.map(s => `<span class="src-badge" style="font-size:.8rem;padding:4px 10px;">${s}</span>`).join('')}</div>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+// close modal
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) document.getElementById('modalOverlay').classList.remove('open');
+});
+document.getElementById('modalClose').addEventListener('click', () => {
+  document.getElementById('modalOverlay').classList.remove('open');
+});
+
+// search
+document.getElementById('searchInput').addEventListener('input', e => {
+  renderIssues(e.target.value);
+});
+
+// ════════════════════════════════════════════════
+// CHART
+// ════════════════════════════════════════════════
+function renderChart() {
+  const catKeys = Object.keys(CATEGORIES).filter(k => k !== 'all');
+  const data = catKeys.map(k => ISSUES.filter(i => i.category === k).reduce((s, i) => s + i.count, 0));
+  const colors = catKeys.map(k => CATEGORIES[k].color);
+  new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+      labels: catKeys.map(k => CATEGORIES[k].icon + ' ' + CATEGORIES[k].label),
+      datasets: [{ data, backgroundColor: colors.map(c => c + 'aa'), borderColor: colors, borderWidth: 2 }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8892b0', padding: 14, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} 件` } }
+      },
+      cutout: '65%',
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
+// TICKER
+// ════════════════════════════════════════════════
+function renderTicker() {
+  const items = [...TICKER, ...TICKER];
+  document.getElementById('ticker').innerHTML = items.map(t =>
+    `<span class="ticker-item"><span>${t.flag}</span><span>${t.txt}</span><span style="color:rgba(255,255,255,.15);margin:0 8px;">●</span></span>`
+  ).join('');
+}
+
+// ════════════════════════════════════════════════
+// ACTIVITY
+// ════════════════════════════════════════════════
+function renderActivity() {
+  document.getElementById('activityFeed').innerHTML = ACTIVITY.map(a =>
+    `<div class="activity-item">
+      <div class="activity-dot" style="background:${a.col}"></div>
+      <div><div class="activity-text">${a.txt}</div><div class="activity-time">${a.time}</div></div>
+    </div>`
+  ).join('');
+}
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  new IssueSphere('sphereCanvas');
+  renderFilter();
+  renderIssues();
+  renderChart();
+  renderTicker();
+  renderActivity();
+
+  // animated counter
+  setTimeout(() => animCount(document.getElementById('totalCount'), 2100000), 400);
+
+  // simulated live count bump
+  let count = 2100000;
+  setInterval(() => {
+    count += Math.floor(Math.random() * 60 + 10);
+    animCount(document.getElementById('totalCount'), count, 600);
+  }, 4000);
+});
+</script>
+</body>
+</html>
