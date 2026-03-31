@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game8 — クエスト機能 プロトタイプ</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 60%, #24243e 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 40px;
+      gap: 16px;
+    }
+
+    .prototype-label {
+      color: rgba(255,255,255,0.45);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+
+    .reset-btn {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 9px 22px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+    .reset-btn:hover { background: rgba(255,255,255,0.14); }
+
+    /* ============ PHONE FRAME ============ */
+    .phone-frame {
+      width: 375px;
+      min-height: 760px;
+      border-radius: 44px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 10px #1c1c1e,
+        0 0 0 14px #3a3a3c,
+        0 40px 80px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+      background: #f0f0f5;
+      position: relative;
+    }
+
+    /* ============ HEADER ============ */
+    .header {
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #e8e8e8;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      background: #f5a623;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text {
+      font-size: 18px;
+      font-weight: 800;
+      color: #1a1a1a;
+      letter-spacing: -0.5px;
+    }
+
+    .coin-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: #fff8ee;
+      border: 1.5px solid #f5a623;
+      border-radius: 20px;
+      padding: 5px 12px;
+    }
+    .coin-icon { font-size: 14px; }
+    .coin-amount {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e07b00;
+      min-width: 40px;
+      text-align: right;
+      transition: all 0.3s;
+    }
+
+    /* ============ NAV TABS ============ */
+    .nav-tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 2px solid #e8e8e8;
+      flex-shrink: 0;
+    }
+    .nav-tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #999;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .nav-tab.active {
+      color: #f5a623;
+      border-bottom-color: #f5a623;
+    }
+    .nav-tab-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+
+    /* ============ SCROLL AREA ============ */
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 72px;
+    }
+    .scroll-area::-webkit-scrollbar { display: none; }
+
+    /* ============ QUEST HEADER BANNER ============ */
+    .quest-banner {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+      padding: 20px 16px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .quest-banner::before {
+      content: '🏆';
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 56px;
+      opacity: 0.15;
+    }
+    .quest-banner-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .quest-banner-sub {
+      font-size: 12px;
+      color: rgba(255,255,255,0.75);
+      margin-bottom: 14px;
+    }
+
+    /* Total progress bar */
+    .total-progress-wrap {
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .total-progress-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .total-progress-label span {
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+    .total-progress-label .count {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffe066;
+    }
+    .progress-bar-bg {
+      height: 8px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ffe066, #f5a623);
+      border-radius: 4px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ============ SECTION ============ */
+    .section {
+      padding: 16px 14px 0;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #555;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #ddd;
+    }
+
+    /* ============ QUEST CARD ============ */
+    .quest-card {
+      background: #fff;
+      border-radius: 14px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .quest-card.completed {
+      opacity: 0.7;
+    }
+    .quest-card-inner {
+      display: flex;
+      align-items: center;
+      padding: 14px 14px;
+      gap: 12px;
+    }
+
+    .quest-icon-wrap {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .quest-icon-wrap.blue { background: #e8f4ff; }
+    .quest-icon-wrap.green { background: #e6f9f0; }
+    .quest-icon-wrap.purple { background: #f0e8ff; }
+    .quest-icon-wrap.orange { background: #fff3e0; }
+    .quest-icon-wrap.red { background: #ffe8e8; }
+
+    .quest-info { flex: 1; min-width: 0; }
+    .quest-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 3px;
+      line-height: 1.3;
+    }
+    .quest-desc {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 7px;
+      line-height: 1.4;
+    }
+    .quest-reward {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: #fff8ee;
+      border: 1px solid #f5d08a;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #e07b00;
+    }
+
+    /* Step progress (for multi-step quests) */
+    .quest-step-bar {
+      padding: 0 14px 12px;
+    }
+    .step-dots {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .step-dot {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: #e8e8e8;
+      transition: background 0.3s;
+    }
+    .step-dot.done { background: #34c759; }
+    .step-dot.active { background: #f5a623; }
+    .step-label {
+      font-size: 10px;
+      color: #aaa;
+      text-align: right;
+    }
+
+    /* Quest action button */
+    .quest-btn {
+      flex-shrink: 0;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1.3;
+      text-align: center;
+      min-width: 62px;
+    }
+    .quest-btn.start {
+      background: linear-gradient(135deg, #f5a623, #e07b00);
+      color: #fff;
+      box-shadow: 0 3px 8px rgba(240,140,0,0.35);
+    }
+    .quest-btn.start:hover { transform: scale(1.04); }
+    .quest-btn.claim {
+      background: linear-gradient(135deg, #34c759, #28a046);
+      color: #fff;
+      box-shadow: 0 3px 8px rgba(52,199,89,0.35);
+      animation: pulse 1.4s infinite;
+    }
+    .quest-btn.done {
+      background: #e8e8e8;
+      color: #aaa;
+      cursor: default;
+    }
+    .quest-btn.in-progress {
+      background: #e8f4ff;
+      color: #2d6a9f;
+      cursor: default;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 3px 8px rgba(52,199,89,0.35); }
+      50% { box-shadow: 0 3px 16px rgba(52,199,89,0.65); }
+    }
+
+    /* ============ MODAL OVERLAY ============ */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      padding: 24px;
+    }
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* ---- Reward modal ---- */
+    .reward-modal {
+      background: #fff;
+      border-radius: 24px;
+      padding: 32px 24px 28px;
+      text-align: center;
+      width: 100%;
+      max-width: 320px;
+      transform: scale(0.85);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .modal-overlay.show .reward-modal {
+      transform: scale(1);
+    }
+    .reward-emoji { font-size: 56px; margin-bottom: 8px; display: block; }
+    .reward-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #1a1a1a;
+      margin-bottom: 6px;
+    }
+    .reward-desc { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.5; }
+    .reward-coin-display {
+      background: linear-gradient(135deg, #fff8ee, #fff3d6);
+      border: 2px solid #f5a623;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .reward-coin-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .reward-coin-amount {
+      font-size: 36px;
+      font-weight: 900;
+      color: #e07b00;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .modal-close-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #f5a623, #e07b00);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(240,140,0,0.35);
+    }
+
+    /* ---- Register modal ---- */
+    .register-modal {
+      background: #fff;
+      border-radius: 24px;
+      padding: 24px 20px;
+      width: 100%;
+      max-width: 320px;
+      transform: translateY(30px);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .modal-overlay.show .register-modal {
+      transform: translateY(0);
+    }
+    .register-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    .register-sub {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+    .form-group { margin-bottom: 12px; }
+    .form-label { font-size: 12px; font-weight: 600; color: #444; margin-bottom: 4px; display: block; }
+    .form-select, .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #1a1a1a;
+      background: #fafafa;
+      appearance: none;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-select:focus, .form-input:focus { border-color: #f5a623; }
+    .form-row { display: flex; gap: 8px; }
+    .form-row .form-group { flex: 1; }
+
+    .register-reward-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff8ee;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      border: 1px solid #f5d08a;
+    }
+    .register-reward-hint span { font-size: 12px; color: #888; }
+    .register-reward-hint strong { color: #e07b00; font-size: 14px; }
+
+    .register-submit {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #f5a623, #e07b00);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(240,140,0,0.35);
+    }
+    .modal-cancel {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #aaa;
+      cursor: pointer;
+    }
+
+    /* ---- Coin +animation ---- */
+    .coin-pop {
+      position: fixed;
+      top: 0; left: 0;
+      width: 375px;
+      pointer-events: none;
+      z-index: 200;
+    }
+    .coin-pop-text {
+      position: absolute;
+      font-size: 18px;
+      font-weight: 800;
+      color: #e07b00;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      animation: coinFloat 1.4s ease-out forwards;
+    }
+    @keyframes coinFloat {
+      0% { opacity: 1; transform: translateY(0) scale(0.8); }
+      30% { transform: translateY(-20px) scale(1.15); opacity: 1; }
+      100% { transform: translateY(-70px) scale(1); opacity: 0; }
+    }
+
+    /* ============ BOTTOM NAV ============ */
+    .bottom-nav {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid #e8e8e8;
+      display: flex;
+      z-index: 50;
+    }
+    .bottom-nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px 4px 12px;
+      font-size: 10px;
+      color: #aaa;
+      cursor: pointer;
+      gap: 3px;
+    }
+    .bottom-nav-item.active { color: #f5a623; }
+    .bottom-nav-icon { font-size: 20px; }
+
+    /* ============ COMPLETED SECTION ============ */
+    .completed-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: #e8f9f0;
+      border: 1px solid #a8e6c3;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #28a046;
+    }
+
+    .confetti-wrap {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 0;
+      pointer-events: none;
+      z-index: 150;
+      overflow: visible;
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      animation: confettiFall 1.6s ease-out forwards;
+    }
+    @keyframes confettiFall {
+      0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(300px) rotate(720deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<p class="prototype-label">🎮 Game8 クエスト機能 プロトタイプ</p>
+
+<div class="phone-frame" id="phoneFrame">
+
+  <!-- CONFETTI -->
+  <div class="confetti-wrap" id="confettiWrap"></div>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🐝</div>
+      <span class="logo-text">Game8</span>
+    </div>
+    <div class="coin-badge">
+      <span class="coin-icon">©</span>
+      <span class="coin-amount" id="coinDisplay">3,300</span>
+    </div>
+  </div>
+
+  <!-- NAV TABS -->
+  <div class="nav-tabs">
+    <div class="nav-tab" onclick="switchTab(this,'pot')">
+      <span class="nav-tab-icon">🍯</span>ポット
+    </div>
+    <div class="nav-tab" onclick="switchTab(this,'game')">
+      <span class="nav-tab-icon">🎮</span>ゲーム
+    </div>
+    <div class="nav-tab active" onclick="switchTab(this,'quest')">
+      <span class="nav-tab-icon">⚔️</span>クエスト
+    </div>
+    <div class="nav-tab" onclick="switchTab(this,'mission')">
+      <span class="nav-tab-icon">📋</span>ミッション
+    </div>
+  </div>
+
+  <!-- SCROLL AREA -->
+  <div class="scroll-area">
+
+    <!-- QUEST BANNER -->
+    <div class="quest-banner">
+      <div class="quest-banner-title">⚔️ クエスト</div>
+      <div class="quest-banner-sub">達成してボーナスコインをゲット！</div>
+      <div class="total-progress-wrap">
+        <div class="total-progress-label">
+          <span>達成状況</span>
+          <span class="count" id="progressCount">0 / 5 完了</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BEGINNER QUESTS -->
+    <div class="section">
+      <div class="section-title">🌱 はじめてクエスト</div>
+
+      <!-- Quest 1: Profile registration -->
+      <div class="quest-card" id="quest-profile">
+        <div class="quest-card-inner">
+          <div class="quest-icon-wrap blue">👤</div>
+          <div class="quest-info">
+            <div class="quest-name">ユーザー情報を登録する</div>
+            <div class="quest-desc">性別・年齢・居住地などのデモグラ情報を登録しよう</div>
+            <div class="quest-reward">© +1,000 コイン</div>
+          </div>
+          <button class="quest-btn start" id="btn-profile" onclick="openRegisterModal()">登録する</button>
+        </div>
+      </div>
+
+      <!-- Quest 2: First game mission -->
+      <div class="quest-card" id="quest-firstmission">
+        <div class="quest-card-inner">
+          <div class="quest-icon-wrap orange">🏅</div>
+          <div class="quest-info">
+            <div class="quest-name">初回ゲーム案件を完了する</div>
+            <div class="quest-desc">はじめてのゲーム攻略ミッションをクリアしよう</div>
+            <div class="quest-reward">© +10,000 コイン <span style="font-size:10px;font-weight:400;color:#e07b00">ボーナス</span></div>
+          </div>
+          <button class="quest-btn in-progress" id="btn-firstmission" onclick="handleFirstMission()">挑戦中</button>
+        </div>
+        <div class="quest-step-bar">
+          <div class="step-dots" id="missionSteps">
+            <div class="step-dot done"></div>
+            <div class="step-dot active"></div>
+            <div class="step-dot"></div>
+            <div class="step-dot"></div>
+          </div>
+          <div class="step-label" id="missionStepLabel">ミッション受注完了・プレイ中 2/4</div>
+        </div>
+      </div>
+
+      <!-- Quest 3: Share -->
+      <div class="quest-card" id="quest-share">
+        <div class="quest-card-inner">
+          <div class="quest-icon-wrap green">📢</div>
+          <div class="quest-info">
+            <div class="quest-name">Game8をシェアする</div>
+            <div class="quest-desc">SNSでGame8を友達にシェアしよう</div>
+            <div class="quest-reward">© +500 コイン</div>
+          </div>
+          <button class="quest-btn start" id="btn-share" onclick="completeQuest('share', 500, 'シェアありがとう！', 'フォロワーにも広めてくれてありがとう！')">シェアする</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DAILY QUESTS -->
+    <div class="section" style="margin-top: 4px;">
+      <div class="section-title">🌟 デイリークエスト</div>
+
+      <!-- Daily quest 1: Read article -->
+      <div class="quest-card" id="quest-article">
+        <div class="quest-card-inner">
+          <div class="quest-icon-wrap purple">📖</div>
+          <div class="quest-info">
+            <div class="quest-name">攻略記事を3本読む</div>
+            <div class="quest-desc">今日の記事を読んでポットをためよう</div>
+            <div class="quest-reward">© +200 コイン</div>
+          </div>
+          <button class="quest-btn claim" id="btn-article" onclick="completeQuest('article', 200, '記事読了！', '3本の攻略記事を読み切りました！')">受け取る</button>
+        </div>
+        <div class="quest-step-bar">
+          <div class="step-dots">
+            <div class="step-dot done"></div>
+            <div class="step-dot done"></div>
+            <div class="step-dot done"></div>
+          </div>
+          <div class="step-label">3/3 完了 — 受け取り可能！</div>
+        </div>
+      </div>
+
+      <!-- Daily quest 2: Login -->
+      <div class="quest-card" id="quest-login">
+        <div class="quest-card-inner">
+          <div class="quest-icon-wrap red">🔥</div>
+          <div class="quest-info">
+            <div class="quest-name">ログインボーナス</div>
+            <div class="quest-desc">今日も来てくれてありがとう！</div>
+            <div class="quest-reward">© +100 コイン</div>
+          </div>
+          <button class="quest-btn done" id="btn-login">受取済</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="height: 20px;"></div>
+  </div><!-- /scroll-area -->
+
+  <!-- ===================== MODALS ===================== -->
+
+  <!-- Register Modal -->
+  <div class="modal-overlay" id="registerModal">
+    <div class="register-modal">
+      <div class="register-title">👤 ユーザー情報登録</div>
+      <div class="register-sub">登録するだけでボーナスコインをプレゼント！</div>
+
+      <div class="register-reward-hint">
+        <span>🎁</span>
+        <div>
+          <span>登録完了で</span>
+          <strong> © 1,000 コイン</strong>
+          <span> プレゼント</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">性別</label>
+          <select class="form-select" id="gender">
+            <option value="">選択</option>
+            <option>男性</option>
+            <option>女性</option>
+            <option>その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">年齢</label>
+          <select class="form-select" id="age">
+            <option value="">選択</option>
+            <option>10代</option>
+            <option>20代</option>
+            <option>30代</option>
+            <option>40代以上</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">都道府県</label>
+        <select class="form-select" id="prefecture">
+          <option value="">選択してください</option>
+          <option>北海道</option><option>東京都</option><option>大阪府</option>
+          <option>神奈川県</option><option>愛知県</option><option>福岡県</option>
+          <option>その他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ゲームジャンル（好き）</label>
+        <select class="form-select" id="genre">
+          <option value="">選択してください</option>
+          <option>RPG</option><option>アクション</option><option>シミュレーション</option>
+          <option>パズル</option><option>スポーツ</option><option>その他</option>
+        </select>
+      </div>
+
+      <button class="register-submit" onclick="submitProfile()">登録してコインを受け取る</button>
+      <span class="modal-cancel" onclick="closeModal('registerModal')">キャンセル</span>
+    </div>
+  </div>
+
+  <!-- Reward Modal -->
+  <div class="modal-overlay" id="rewardModal">
+    <div class="reward-modal">
+      <span class="reward-emoji" id="rewardEmoji">🎉</span>
+      <div class="reward-title" id="rewardTitle">クエスト達成！</div>
+      <div class="reward-desc" id="rewardDesc">おめでとうございます！</div>
+      <div class="reward-coin-display">
+        <div class="reward-coin-label">ボーナスコイン獲得</div>
+        <div class="reward-coin-amount">
+          <span>©</span>
+          <span id="rewardAmount">+1,000</span>
+        </div>
+      </div>
+      <button class="modal-close-btn" onclick="closeRewardModal()">OK！受け取る 🎊</button>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <div class="bottom-nav-item">
+      <span class="bottom-nav-icon">🏠</span>マイページ
+    </div>
+    <div class="bottom-nav-item">
+      <span class="bottom-nav-icon">🔄</span>交換
+    </div>
+    <div class="bottom-nav-item">
+      <span class="bottom-nav-icon">🕐</span>履歴
+    </div>
+    <div class="bottom-nav-item">
+      <span class="bottom-nav-icon">👤</span>アカウント
+    </div>
+    <div class="bottom-nav-item">
+      <span class="bottom-nav-icon">☰</span>メニュー
+    </div>
+  </div>
+
+</div><!-- /phone-frame -->
+
+<button class="reset-btn" onclick="resetAll()">🔄 リセット</button>
+
+<script>
+  // ============ STATE ============
+  const state = {
+    coins: 3300,
+    completed: { login: true },   // login already done on load
+    totalQuests: 5,
+  };
+
+  let pendingReward = { amount: 0, emoji: '🎉', title: '', desc: '', questId: '' };
+
+  // ============ COIN DISPLAY ============
+  function updateCoinDisplay(newAmount, animate = true) {
+    const el = document.getElementById('coinDisplay');
+    const old = state.coins;
+    state.coins = newAmount;
+    if (!animate) { el.textContent = newAmount.toLocaleString(); return; }
+
+    // Count-up animation
+    const duration = 800;
+    const start = performance.now();
+    function tick(now) {
+      const p = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(old + (newAmount - old) * ease).toLocaleString();
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ============ PROGRESS ============
+  function updateProgress() {
+    const done = Object.keys(state.completed).length;
+    const total = state.totalQuests;
+    document.getElementById('progressCount').textContent = `${done} / ${total} 完了`;
+    document.getElementById('progressBar').style.width = `${(done / total) * 100}%`;
+  }
+
+  // ============ OPEN REGISTER MODAL ============
+  function openRegisterModal() {
+    if (state.completed['profile']) return;
+    document.getElementById('registerModal').classList.add('show');
+  }
+
+  // ============ SUBMIT PROFILE ============
+  function submitProfile() {
+    const gender = document.getElementById('gender').value;
+    const age = document.getElementById('age').value;
+    const pref = document.getElementById('prefecture').value;
+    const genre = document.getElementById('genre').value;
+    if (!gender || !age || !pref || !genre) {
+      // Simple shake feedback
+      const modal = document.querySelector('.register-modal');
+      modal.style.animation = 'none';
+      modal.style.transform = 'translateX(-8px)';
+      setTimeout(() => { modal.style.transform = 'translateX(8px)'; }, 80);
+      setTimeout(() => { modal.style.transform = 'translateX(0)'; }, 160);
+      return;
+    }
+    closeModal('registerModal');
+    setTimeout(() => {
+      showReward('profile', 1000, '🎉', 'プロフィール登録完了！', 'ユーザー情報の登録ありがとう！\nあなたに合った案件をご紹介します。');
+    }, 200);
+  }
+
+  // ============ GENERIC COMPLETE ============
+  function completeQuest(id, amount, title, desc, emoji = '🎉') {
+    if (state.completed[id]) return;
+    showReward(id, amount, emoji, title, desc);
+  }
+
+  // ============ FIRST MISSION (multi-step simulation) ============
+  function handleFirstMission() {
+    // In this prototype the button shows "挑戦中" — simulate progression
+    // On second click it becomes claimable
+    const btn = document.getElementById('btn-firstmission');
+    if (btn.classList.contains('claim')) {
+      completeQuest('firstmission', 10000, '🏅初回ミッション達成！', 'はじめてのゲーム攻略ミッションをクリア！\n特別ボーナスをプレゼント！', '🏅');
+      return;
+    }
+    // Advance steps
+    const steps = document.getElementById('missionSteps');
+    const dots = steps.querySelectorAll('.step-dot');
+    const activeDot = [...dots].findIndex(d => d.classList.contains('active'));
+    if (activeDot !== -1 && activeDot < dots.length - 1) {
+      dots[activeDot].classList.remove('active');
+      dots[activeDot].classList.add('done');
+      dots[activeDot + 1].classList.add('active');
+      const labels = ['ミッション受注完了・プレイ中 2/4', 'クリア条件達成・確認中 3/4', 'ミッション完了！受け取り可能 4/4'];
+      document.getElementById('missionStepLabel').textContent = labels[activeDot];
+      if (activeDot + 1 === dots.length - 1) {
+        // Last step — all done
+        dots[activeDot + 1].classList.remove('active');
+        dots[activeDot + 1].classList.add('done');
+        btn.className = 'quest-btn claim';
+        btn.textContent = '受け取る';
+      } else {
+        btn.textContent = '進める▶';
+      }
+    }
+  }
+
+  // ============ SHOW REWARD ============
+  function showReward(questId, amount, emoji, title, desc) {
+    pendingReward = { questId, amount, emoji, title, desc };
+    document.getElementById('rewardEmoji').textContent = emoji;
+    document.getElementById('rewardTitle').textContent = title;
+    document.getElementById('rewardDesc').textContent = desc;
+    document.getElementById('rewardAmount').textContent = '+' + amount.toLocaleString();
+    document.getElementById('rewardModal').classList.add('show');
+  }
+
+  // ============ CLOSE REWARD ============
+  function closeRewardModal() {
+    document.getElementById('rewardModal').classList.remove('show');
+    const { questId, amount } = pendingReward;
+
+    // Mark complete
+    state.completed[questId] = true;
+    updateCoinDisplay(state.coins + amount);
+    updateProgress();
+    markCardDone(questId);
+
+    // Confetti
+    spawnConfetti();
+
+    // Coin pop near header
+    spawnCoinPop(amount);
+  }
+
+  function markCardDone(questId) {
+    const cardId = `quest-${questId}`;
+    const btnId = `btn-${questId}`;
+    const card = document.getElementById(cardId);
+    const btn = document.getElementById(btnId);
+    if (!card || !btn) return;
+
+    card.classList.add('completed');
+    btn.className = 'quest-btn done';
+    btn.textContent = '完了 ✓';
+
+    // Replace reward badge with completed badge
+    const rewardEl = card.querySelector('.quest-reward');
+    if (rewardEl) {
+      rewardEl.outerHTML = '<span class="completed-badge">✅ 受取済み</span>';
+    }
+  }
+
+  // ============ CLOSE MODAL ============
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+  }
+
+  // ============ CONFETTI ============
+  function spawnConfetti() {
+    const wrap = document.getElementById('confettiWrap');
+    const colors = ['#f5a623','#34c759','#007aff','#ff3b30','#af52de','#ffe066'];
+    for (let i = 0; i < 28; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.cssText = `
+        left: ${Math.random() * 100}%;
+        background: ${colors[Math.floor(Math.random() * colors.length)]};
+        width: ${6 + Math.random() * 8}px;
+        height: ${6 + Math.random() * 8}px;
+        animation-delay: ${Math.random() * 0.4}s;
+        animation-duration: ${1.2 + Math.random() * 0.8}s;
+        border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+      `;
+      wrap.appendChild(el);
+      setTimeout(() => el.remove(), 2500);
+    }
+  }
+
+  // ============ COIN POP ANIMATION ============
+  function spawnCoinPop(amount) {
+    const frame = document.getElementById('phoneFrame');
+    const rect = frame.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'coin-pop-text';
+    el.textContent = `+${amount.toLocaleString()} ©`;
+    el.style.cssText = `
+      top: 52px;
+      right: 24px;
+    `;
+    const wrap = document.createElement('div');
+    wrap.className = 'coin-pop';
+    wrap.style.left = rect.left + 'px';
+    wrap.style.top = rect.top + 'px';
+    wrap.appendChild(el);
+    document.body.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 1600);
+  }
+
+  // ============ TAB SWITCH (visual only) ============
+  function switchTab(el, tab) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  // ============ RESET ============
+  function resetAll() {
+    state.coins = 3300;
+    state.completed = { login: true };
+    updateCoinDisplay(3300, false);
+    updateProgress();
+
+    // Restore quest cards
+    const restoreMap = {
+      profile: { btnText: '登録する', btnClass: 'quest-btn start', reward: '© +1,000 コイン', onclick: 'openRegisterModal()' },
+      firstmission: { btnText: '挑戦中', btnClass: 'quest-btn in-progress', reward: '© +10,000 コイン <span style="font-size:10px;font-weight:400;color:#e07b00">ボーナス</span>', onclick: 'handleFirstMission()' },
+      share: { btnText: 'シェアする', btnClass: 'quest-btn start', reward: '© +500 コイン', onclick: "completeQuest('share', 500, 'シェアありがとう！', 'フォロワーにも広めてくれてありがとう！')" },
+      article: { btnText: '受け取る', btnClass: 'quest-btn claim', reward: '© +200 コイン', onclick: "completeQuest('article', 200, '記事読了！', '3本の攻略記事を読み切りました！')" },
+    };
+
+    Object.entries(restoreMap).forEach(([id, cfg]) => {
+      const card = document.getElementById(`quest-${id}`);
+      const btn = document.getElementById(`btn-${id}`);
+      if (!card || !btn) return;
+      card.classList.remove('completed');
+      btn.className = cfg.btnClass;
+      btn.textContent = '';
+      btn.innerHTML = cfg.btnText;
+      btn.setAttribute('onclick', cfg.onclick);
+      const completedBadge = card.querySelector('.completed-badge');
+      if (completedBadge) {
+        completedBadge.outerHTML = `<div class="quest-reward">${cfg.reward}</div>`;
+      }
+    });
+
+    // Reset mission steps
+    const steps = document.querySelectorAll('#missionSteps .step-dot');
+    steps.forEach((d, i) => { d.className = 'step-dot' + (i === 0 ? ' done' : i === 1 ? ' active' : ''); });
+    document.getElementById('missionStepLabel').textContent = 'ミッション受注完了・プレイ中 2/4';
+    const mBtn = document.getElementById('btn-firstmission');
+    mBtn.className = 'quest-btn in-progress';
+    mBtn.textContent = '挑戦中';
+  }
+
+  // Init
+  updateProgress();
+</script>
+</body>
+</html>
